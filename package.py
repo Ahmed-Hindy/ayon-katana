@@ -1,6 +1,6 @@
 name = "katana"
 title = "Katana"
-version = "0.1.63"
+version = "0.1.63+dev"
 
 app_host_name = "katana"
 client_dir = "ayon_katana"

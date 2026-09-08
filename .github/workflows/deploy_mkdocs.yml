@@ -8,7 +8,7 @@ on:
 
 jobs:
   build-mk-docs:
-    # FIXME: Update @develop after ops-repo-automation publishes a stable tag.
+    # FIXME: Update @develop to @main after `ops-repo-automation` release.
     uses: ynput/ops-repo-automation/.github/workflows/deploy_mkdocs.yml@develop
     with:
       repo: ${{ github.repository }}

@@ -1,0 +1,176 @@
+name: 🚀 Bootstrap Stable Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        type: string
+        description: "Stable version to release (for example 0.1.63)"
+        required: true
+      draft:
+        type: boolean
+        description: "Create the GitHub release as a draft"
+        required: false
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bootstrap-release-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  validate-and-build:
+    if: github.repository_owner != 'ynput'
+    name: Validate develop and build ${{ inputs.version }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout develop
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Validate release metadata
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release version must be stable SemVer (for example 0.1.63)." >&2
+            exit 1
+          fi
+
+          PACKAGE_VERSION=$(uv run python -c 'import package; print(package.version)')
+          CLIENT_VERSION=$(uv run python -c 'import runpy; print(runpy.run_path("client/ayon_katana/version.py")["__version__"])')
+          if [[ "$PACKAGE_VERSION" != "$RELEASE_VERSION" ]]; then
+            echo "package.py version $PACKAGE_VERSION does not match $RELEASE_VERSION." >&2
+            exit 1
+          fi
+          if [[ "$CLIENT_VERSION" != "$RELEASE_VERSION" ]]; then
+            echo "client version $CLIENT_VERSION does not match $RELEASE_VERSION." >&2
+            exit 1
+          fi
+          if git rev-parse --verify --quiet "refs/tags/$RELEASE_VERSION" >/dev/null; then
+            echo "Tag $RELEASE_VERSION already exists." >&2
+            exit 1
+          fi
+
+      - name: Sync development dependencies
+        run: uv sync --locked --dev
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Check formatting
+        run: uv run ruff format --check .
+
+      - name: Run unit tests
+        run: uv run pytest
+
+      - name: Compile Python sources
+        run: uv run python -m compileall client server scripts tests
+
+      - name: Build documentation
+        run: uv run --with-requirements mkdocs_requirements.txt mkdocs build --strict
+
+      - name: Build addon package
+        run: uv run python create_package.py --extract
+
+      - name: Inspect addon package integrity
+        run: uv run python scripts/check_package_integrity.py package
+
+      - name: Upload release package
+        uses: actions/upload-artifact@v4
+        with:
+          name: katana-release-${{ inputs.version }}
+          path: package/katana-${{ inputs.version }}.zip
+          if-no-files-found: error
+
+  create-release:
+    name: Promote develop to main and publish ${{ inputs.version }}
+    needs: validate-and-build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 0
+
+      - name: Download release package
+        uses: actions/download-artifact@v4
+        with:
+          name: katana-release-${{ inputs.version }}
+          path: release-artifact
+
+      - name: Promote develop to main
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin develop main --tags
+          git switch -C main origin/main
+          git merge --no-ff origin/develop -m "[Bootstrap] Release $RELEASE_VERSION"
+          git diff --exit-code origin/develop HEAD
+          git push origin main
+
+      - name: Create tag and GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          DRAFT: ${{ inputs.draft }}
+        run: |
+          set -euo pipefail
+          git tag -a "$RELEASE_VERSION" -m "AYON Katana $RELEASE_VERSION"
+          git push origin "$RELEASE_VERSION"
+
+          release_args=(
+            "$RELEASE_VERSION"
+            "release-artifact/katana-$RELEASE_VERSION.zip"
+            --verify-tag
+            --generate-notes
+            --title "$RELEASE_VERSION"
+          )
+          if [[ "$DRAFT" == "true" ]]; then
+            release_args+=(--draft)
+          fi
+          gh release create "${release_args[@]}"
+
+  resume-development:
+    name: Resume development after ${{ inputs.version }}
+    needs: create-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout develop
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+
+      - name: Restore development version
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          DEV_VERSION="${RELEASE_VERSION}+dev"
+          sed -i "s/^version = \".*\"/version = \"$DEV_VERSION\"/" package.py
+          python create_package.py --output package
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.py client/ayon_katana/version.py
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "[Automated] Resume $DEV_VERSION development"
+          git push origin develop

@@ -1,0 +1,22 @@
+name: 🌟 Initial Release Trigger
+
+on:
+  workflow_dispatch:
+    inputs:
+      draft:
+        type: boolean
+        description: "Create Release Draft"
+        required: false
+        default: true
+
+jobs:
+  call-initial-release:
+    if: github.repository_owner == 'ynput'
+    uses: ynput/ops-repo-automation/.github/workflows/initial_release.yml@main
+    with:
+      draft: ${{ inputs.draft }}
+      release_overwrite: "0.1.63"
+    secrets:
+      token: ${{ secrets.YNPUT_BOT_TOKEN }}
+      email: ${{ secrets.CI_EMAIL }}
+      user: ${{ secrets.CI_USER }}

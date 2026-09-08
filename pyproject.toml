@@ -1,0 +1,21 @@
+[dependency-groups]
+dev = [
+    "pytest>=8.3.5",
+    "ruff>=0.12.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["client", "."]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+target-version = "py39"
+line-length = 88
+src = ["client", "server", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+ignore = ["UP006", "UP007", "UP035", "UP045"]

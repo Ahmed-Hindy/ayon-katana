@@ -1,0 +1,39 @@
+site_name: AYON Katana
+repo_url: https://github.com/Ahmed-Hindy/ayon-katana
+
+nav:
+  - Home: index.md
+  - Known limitations: known-limitations.md
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+  features:
+    - navigation.sections
+    - navigation.path
+
+extra:
+  version:
+    provider: mike
+
+plugins:
+  - search
+  - offline
+  - minify:
+      minify_html: true
+      minify_js: true
+      minify_css: true
+      htmlmin_opts:
+        remove_comments: true
+      cache_safe: true
+  - mike

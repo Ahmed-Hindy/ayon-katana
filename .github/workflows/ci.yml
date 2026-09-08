@@ -1,0 +1,68 @@
+name: 🧪 Katana Addon CI
+
+on:
+  pull_request:
+    branches:
+      - develop
+  push:
+    branches:
+      - develop
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Format, docs, and addon contracts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Sync development dependencies
+        run: uv sync --locked --dev
+
+      - name: Check formatting
+        run: uv run ruff format --check .
+
+      - name: Build public documentation
+        run: uv run --with-requirements mkdocs_requirements.txt mkdocs build --strict
+
+  addon-package:
+    name: AYON addon package (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Sync development dependencies
+        run: uv sync --locked --dev
+
+      - name: Run unit tests
+        run: uv run pytest
+
+      - name: Compile Python sources
+        run: uv run python -m compileall client server scripts tests
+
+      - name: Build and extract AYON addon package
+        run: uv run python create_package.py --extract
+
+      - name: Inspect AYON addon package integrity
+        run: uv run python scripts/check_package_integrity.py package

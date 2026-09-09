@@ -34,11 +34,11 @@ class ValidateRenderColorspace(
                 "Katana has no valid active OCIO config with a scene-linear role."
             )
         render_products = instance.data.get("renderProducts")
-        products = getattr(
-            getattr(render_products, "layer_data", None),
-            "products",
-            [],
-        )
+        if render_products is None:
+            raise PublishValidationError(
+                "Katana render products have no colorspace data."
+            )
+        products = render_products.layer_data.products
         if not products:
             raise PublishValidationError(
                 "Katana render products have no colorspace data."

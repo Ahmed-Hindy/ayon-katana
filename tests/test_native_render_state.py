@@ -385,10 +385,8 @@ def test_native_resolution_uses_katana_resource_data(monkeypatch, tmp_path) -> N
     assert resolution == render.RenderResolution("Test", 1920, 1080, 1.0)
 
 
-def test_colorspace_requires_an_active_ocio_config(monkeypatch, tmp_path) -> None:
-    """OCIO absence cannot fabricate colorspace metadata."""
-    config_path = tmp_path / "config.ocio"
-    config_path.write_text("ocio_profile_version: 2", encoding="utf-8")
+def _load_colorspace_modules(monkeypatch):
+    """Load addon classes with Core services and attrs constructors stubbed."""
     colorspace_core = types.ModuleType("ayon_core.pipeline.colorspace")
     colorspace_core.get_ocio_config_colorspaces = lambda _path: {
         "roles": {"scene_linear": {"colorspace": "ACEScg"}}
@@ -429,6 +427,14 @@ def test_colorspace_requires_an_active_ocio_config(monkeypatch, tmp_path) -> Non
         "ayon_katana.api.lib",
         PROJECT_ROOT / "client" / "ayon_katana" / "api" / "lib.py",
     )
+    return colorspace, lib
+
+
+def test_colorspace_requires_an_active_ocio_config(monkeypatch, tmp_path) -> None:
+    """OCIO absence cannot fabricate colorspace metadata."""
+    config_path = tmp_path / "config.ocio"
+    config_path.write_text("ocio_profile_version: 2", encoding="utf-8")
+    _colorspace, lib = _load_colorspace_modules(monkeypatch)
 
     monkeypatch.delenv("OCIO", raising=False)
     assert lib.get_color_management_preferences() == {}
@@ -437,6 +443,87 @@ def test_colorspace_requires_an_active_ocio_config(monkeypatch, tmp_path) -> Non
         "config": str(config_path),
         "colorspace": "ACEScg",
     }
+
+
+@pytest.fixture
+def render_colorspace(monkeypatch, tmp_path):
+    """Create validator input using the addon's render-product constructor."""
+    colorspace, _lib = _load_colorspace_modules(monkeypatch)
+    module = _load_validator(
+        monkeypatch,
+        "validate_render_colorspace.py",
+        {"plugin": types.SimpleNamespace(KatanaInstancePlugin=FakeInstancePlugin)},
+    )
+    config = tmp_path / "config.ocio"
+    config.write_text("ocio_profile_version: 2", encoding="utf-8")
+    instance = types.SimpleNamespace(
+        data={
+            "colorspaceConfig": str(config),
+            "colorspace": "ACEScg",
+            "renderProducts": colorspace.ARenderProduct(["beauty", "depth"], "ACEScg"),
+        }
+    )
+    return module.ValidateRenderColorspace(), instance
+
+
+def test_render_colorspace_accepts_addon_products(render_colorspace):
+    """The addon-owned render-product structure satisfies the validator."""
+    validator, instance = render_colorspace
+    validator.process(instance)
+
+
+@pytest.mark.parametrize("state", ["missing", "none", "empty"])
+def test_render_colorspace_requires_products(render_colorspace, state):
+    """Absent products and empty product lists remain validation errors."""
+    validator, instance = render_colorspace
+    if state == "missing":
+        del instance.data["renderProducts"]
+    elif state == "none":
+        instance.data["renderProducts"] = None
+    else:
+        instance.data["renderProducts"].layer_data.products.clear()
+    with pytest.raises(FakePublishValidationError, match="no colorspace data"):
+        validator.process(instance)
+
+
+def test_render_colorspace_rejects_mismatched_product(render_colorspace):
+    """Every product must match the collected scene-linear colorspace."""
+    validator, instance = render_colorspace
+    instance.data["renderProducts"].layer_data.products[1].colorspace = "sRGB"
+    with pytest.raises(FakePublishValidationError, match="do not share"):
+        validator.process(instance)
+
+
+@pytest.mark.parametrize("field", ["colorspaceConfig", "colorspace"])
+def test_render_colorspace_requires_config_and_role(render_colorspace, field):
+    """Valid products cannot substitute for missing configuration metadata."""
+    validator, instance = render_colorspace
+    instance.data[field] = ""
+    with pytest.raises(FakePublishValidationError, match="active OCIO"):
+        validator.process(instance)
+
+
+@pytest.mark.parametrize("missing_layer", [True, False])
+def test_render_colorspace_surfaces_broken_internal_structure(
+    render_colorspace, missing_layer
+):
+    """Broken owned objects surface programming errors instead of empty data."""
+    validator, instance = render_colorspace
+    if missing_layer:
+        del instance.data["renderProducts"].layer_data
+    else:
+        del instance.data["renderProducts"].layer_data.products
+    with pytest.raises(AttributeError):
+        validator.process(instance)
+
+
+def test_render_colorspace_can_be_disabled(render_colorspace):
+    """Disabled validation does not access required colorspace data."""
+    validator, instance = render_colorspace
+    instance.data = {
+        "publish_attributes": {"ValidateRenderColorspace": {"active": False}}
+    }
+    validator.process(instance)
 
 
 def test_expected_files_expand_distinct_aov_outputs(monkeypatch) -> None:

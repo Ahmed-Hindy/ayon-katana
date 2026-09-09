@@ -7,6 +7,8 @@ import sys
 import types
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).parents[1]
 
 
@@ -506,17 +508,66 @@ def test_cross_context_save_as_cancel_and_headless_do_not_rewrite_instances(
 
     monkeypatch.setattr(module, "_get_main_window", lambda: object())
     monkeypatch.setattr(module, "_prompt_context_change", lambda *_args: None)
-    controller.on_workfile_save_before(target)
-    controller.on_task_changed(target)
+    controller.on_workfile_save_before(types.SimpleNamespace(data=target))
+    controller.on_task_changed(types.SimpleNamespace(data=target))
 
     monkeypatch.setattr(module, "_get_main_window", lambda: None)
-    controller.on_workfile_save_before(target)
-    controller.on_task_changed(target)
+    controller.on_workfile_save_before(types.SimpleNamespace(data=target))
+    controller.on_task_changed(types.SimpleNamespace(data=target))
 
     assert context_module.frame_range_updates == 0
     assert context_module.instance_updates == []
     assert context_module.applied == []
     assert len(context_module.updated) == 2
+
+
+@pytest.mark.parametrize("handler_name", ["on_task_changed", "on_workfile_save_before"])
+def test_lifecycle_callbacks_require_event_objects(monkeypatch, handler_name):
+    """A bare dictionary is not the AYON callback contract."""
+    module, context_module, _builder, _events = _load_lifecycle_module(monkeypatch)
+    controller = module.LifecycleController(FakeLifecycleHost())
+    with pytest.raises(AttributeError, match="data"):
+        getattr(controller, handler_name)({"task_name": "lighting"})
+    assert controller._pending_workfile_save is None
+    assert context_module.applied == []
+    assert context_module.updated == []
+
+
+def test_lifecycle_empty_task_event_applies_current_context(monkeypatch):
+    """An empty AYON payload still invokes current-context settings."""
+    module, context_module, _builder, _events = _load_lifecycle_module(monkeypatch)
+    host = FakeLifecycleHost()
+    controller = module.LifecycleController(host)
+    controller.on_task_changed(types.SimpleNamespace(data={}))
+    assert context_module.applied == [(host, {})]
+
+
+def test_save_as_empty_task_event_retains_pending_target(monkeypatch):
+    """An empty task payload preserves the explicit Save As destination."""
+    module, context_module, _builder, _events = _load_lifecycle_module(monkeypatch)
+    host = FakeLifecycleHost()
+    controller = module.LifecycleController(host)
+    target = {"folder_path": "/shots/020", "task_name": "comp"}
+    monkeypatch.setattr(module, "_get_main_window", lambda: None)
+    controller.on_workfile_save_before(types.SimpleNamespace(data=target))
+    controller.on_task_changed(types.SimpleNamespace(data={}))
+    assert context_module.updated == [(host, {**host.context, **target})]
+    assert controller._pending_workfile_save is None
+    assert context_module.instance_updates == []
+
+
+def test_save_as_empty_payload_preserves_current_context(monkeypatch):
+    """An empty Save As event captures the source and completes unchanged."""
+    module, context_module, _builder, _events = _load_lifecycle_module(monkeypatch)
+    host = FakeLifecycleHost()
+    controller = module.LifecycleController(host)
+    controller.on_workfile_save_before(types.SimpleNamespace(data={}))
+    assert controller._pending_workfile_save == {"source": host.context, "target": {}}
+    controller.on_task_changed(types.SimpleNamespace(data={}))
+    assert context_module.updated == [(host, host.context)]
+    assert controller._pending_workfile_save is None
+    assert context_module.frame_range_updates == 0
+    assert context_module.instance_updates == []
 
 
 def test_lifecycle_new_scene_applies_context_then_uses_new_file_trigger(monkeypatch):

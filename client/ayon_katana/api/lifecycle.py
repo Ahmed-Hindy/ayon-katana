@@ -187,25 +187,21 @@ class LifecycleController:
         self._pending_workfile_save = None
         emit_event("save")
 
-    def on_workfile_save_before(self, event=None):
+    def on_workfile_save_before(self, event):
         """Remember AYON Workfiles Save As context until ``taskChanged``.
 
         Args:
             event: AYON event containing the target workfile context.
         """
-        event_data = getattr(event, "data", event)
-        if not isinstance(event_data, dict):
-            event_data = {}
+        event_data = event.data
         self._pending_workfile_save = {
             "source": context.get_current_context_data(self._host),
             "target": dict(event_data),
         }
 
-    def on_task_changed(self, event=None):
+    def on_task_changed(self, event):
         """Handle AYON task changes and cross-context Save As updates."""
-        event_data = getattr(event, "data", event)
-        if not isinstance(event_data, dict):
-            event_data = None
+        event_data = event.data
 
         pending_save = self._pending_workfile_save
         self._pending_workfile_save = None

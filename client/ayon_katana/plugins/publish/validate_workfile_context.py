@@ -26,35 +26,15 @@ class ValidateWorkfileContext(
         embedded = registered_host().get_context_data()
         publish_context = instance.context.data
 
-        missing = []
-        for source, data, keys in (
-            ("publish context", publish_context, ("projectName",)),
-            ("workfile instance", instance.data, ("folderPath", "task")),
-            (
-                "embedded context",
-                embedded,
-                ("project_name", "folder_path", "task_name"),
-            ),
-        ):
-            missing.extend(
-                f"{source}.{key}" for key in keys if data.get(key) in (None, "")
-            )
-        if missing:
-            raise PublishValidationError(
-                "Katana workfile context has missing or empty required fields: "
-                + ", ".join(missing),
-                title="Katana workfile context incomplete",
-            )
-
         expected = {
             "project": publish_context["projectName"],
-            "folder": instance.data["folderPath"],
-            "task": instance.data["task"],
+            "folder": instance.data.get("folderPath"),
+            "task": instance.data.get("task"),
         }
         actual = {
-            "project": embedded["project_name"],
-            "folder": embedded["folder_path"],
-            "task": embedded["task_name"],
+            "project": embedded.get("project_name"),
+            "folder": embedded.get("folder_path"),
+            "task": embedded.get("task_name"),
         }
 
         mismatches = {

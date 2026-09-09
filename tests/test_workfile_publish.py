@@ -263,6 +263,39 @@ def test_workfile_context_reports_mismatch(workfile_context, field, label):
     )
 
 
+def test_workfile_context_requires_publish_project_name(workfile_context):
+    """The authoritative publish context must provide its canonical project key."""
+    validator, instance, _embedded = workfile_context
+    del instance.context.data["projectName"]
+    with pytest.raises(KeyError, match="projectName"):
+        validator.process(instance)
+
+
+@pytest.mark.parametrize(
+    ("source", "field"),
+    [
+        ("workfile instance", "folderPath"),
+        ("workfile instance", "task"),
+        ("embedded context", "project_name"),
+        ("embedded context", "folder_path"),
+        ("embedded context", "task_name"),
+    ],
+)
+def test_workfile_context_rejects_missing_persisted_metadata(
+    workfile_context, source, field
+):
+    """Missing persisted metadata is reported as a context mismatch."""
+    validator, instance, embedded = workfile_context
+    data = {
+        "workfile instance": instance.data,
+        "embedded context": embedded,
+    }[source]
+    del data[field]
+    with pytest.raises(FakePublishValidationError) as exc_info:
+        validator.process(instance)
+    assert exc_info.value.title == "Katana workfile context mismatch"
+
+
 @pytest.mark.parametrize(
     ("source", "field"),
     [
@@ -274,31 +307,30 @@ def test_workfile_context_reports_mismatch(workfile_context, field, label):
         ("embedded context", "task_name"),
     ],
 )
-@pytest.mark.parametrize("empty", ["missing", None, ""])
-def test_workfile_context_requires_each_field(workfile_context, source, field, empty):
-    """Missing fields fail even when publish context could supply defaults."""
+@pytest.mark.parametrize("empty", [None, ""])
+def test_workfile_context_rejects_empty_canonical_values(
+    workfile_context, source, field, empty
+):
+    """Present but empty canonical values remain artist-facing mismatches."""
     validator, instance, embedded = workfile_context
     data = {
         "publish context": instance.context.data,
         "workfile instance": instance.data,
         "embedded context": embedded,
     }[source]
-    if empty == "missing":
-        del data[field]
-    else:
-        data[field] = empty
+    data[field] = empty
     with pytest.raises(FakePublishValidationError) as exc_info:
         validator.process(instance)
-    assert f"{source}.{field}" in str(exc_info.value)
+    assert exc_info.value.title == "Katana workfile context mismatch"
 
 
 def test_workfile_context_rejects_entirely_missing_context(workfile_context):
-    """Two absent contexts must not count as a successful match."""
+    """Absent producer context surfaces the first missing canonical key."""
     validator, instance, embedded = workfile_context
     instance.context.data.clear()
     instance.data.clear()
     embedded.clear()
-    with pytest.raises(FakePublishValidationError, match="missing or empty"):
+    with pytest.raises(KeyError, match="projectName"):
         validator.process(instance)
 
 
@@ -311,7 +343,7 @@ def test_workfile_context_rejects_alias_only_data(workfile_context):
     embedded.update(
         projectName="TestProject", folderPath="/shots/010", taskName="lighting"
     )
-    with pytest.raises(FakePublishValidationError, match="missing or empty"):
+    with pytest.raises(KeyError, match="projectName"):
         validator.process(instance)
 
 

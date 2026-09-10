@@ -7,6 +7,7 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["client", "."]
+norecursedirs = ["tests/live"]
 
 [tool.uv]
 package = false

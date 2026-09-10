@@ -1096,12 +1096,9 @@ def test_katana_update_metadata_failure_restores_existing_graph_and_metadata(
     assert user_group.getInputPort("in").getConnectedPorts() == [
         old_managed_group.getOutputPort("out")
     ]
+    assert old_managed_group.getName() == environment.containers.MANAGED_GROUP_NAME
     assert not any(
-        child.getName()
-        in {
-            environment.katana._TEMP_MANAGED_GROUP_NAME,
-            environment.katana._PREVIOUS_MANAGED_GROUP_NAME,
-        }
+        child.getName() == environment.katana._TEMP_MANAGED_GROUP_NAME
         for child in container_node.getChildren()
     )
 

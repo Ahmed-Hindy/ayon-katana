@@ -19,6 +19,7 @@ _USER_ROLE = "user"
 MANAGED_GROUP_NAME = "AYON_MANAGED"
 USER_GROUP_NAME = "USER"
 SOURCE_ROLE = "source"
+_PREVIOUS_MANAGED_GROUP_NAME = "AYON_MANAGED_PREVIOUS"
 
 
 def imprint(node, data: dict[str, Any]) -> None:
@@ -230,6 +231,73 @@ def update_container(container_node, data: dict[str, Any]) -> None:
     current_data.pop("objectName", None)
     current_data.update(data)
     imprint(container_node, current_data)
+
+
+def _safe_call(callback, *args) -> None:
+    """Best-effort one rollback operation without masking the root failure."""
+    with suppress(Exception):
+        callback(*args)
+
+
+def _restore_managed_group(
+    container_node,
+    previous_group,
+    replacement_group,
+    user_group,
+    previous_name: str,
+    replacement_name: str,
+    previous_data: dict[str, Any],
+) -> None:
+    """Restore the previous managed graph after a failed replacement."""
+    _safe_call(disconnect_managed_group_from_user, replacement_group, user_group)
+    _safe_call(replacement_group.setName, replacement_name)
+    _safe_call(previous_group.setName, previous_name)
+    _safe_call(connect_managed_group_to_user, previous_group, user_group)
+    _safe_call(update_container, container_node, previous_data)
+    _safe_call(replacement_group.delete)
+
+
+def replace_managed_group(
+    container_node,
+    replacement_group,
+    data: dict[str, Any],
+) -> None:
+    """Atomically replace a container's managed graph and metadata."""
+    previous_group = get_managed_group(container_node)
+    user_group = get_user_group(container_node)
+    if previous_group is None or user_group is None:
+        replacement_group.delete()
+        raise RuntimeError("The AYON container is missing its managed/user groups.")
+
+    previous_data = parse_container(container_node)
+    if previous_data is None:
+        replacement_group.delete()
+        raise RuntimeError("The AYON Katana container has invalid metadata.")
+    previous_data.pop("node", None)
+    previous_data.pop("objectName", None)
+    previous_name = previous_group.getName()
+    replacement_name = replacement_group.getName()
+
+    try:
+        disconnect_managed_group_from_user(previous_group, user_group)
+        connect_managed_group_to_user(replacement_group, user_group)
+        set_managed_group_role(replacement_group)
+        previous_group.setName(_PREVIOUS_MANAGED_GROUP_NAME)
+        replacement_group.setName(MANAGED_GROUP_NAME)
+        update_container(container_node, data)
+    except Exception:
+        _restore_managed_group(
+            container_node,
+            previous_group,
+            replacement_group,
+            user_group,
+            previous_name,
+            replacement_name,
+            previous_data,
+        )
+        raise
+
+    previous_group.delete()
 
 
 def ls():

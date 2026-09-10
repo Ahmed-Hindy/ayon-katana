@@ -1053,6 +1053,38 @@ def test_katana_update_invalid_graph_preserves_existing_graph_and_metadata(
     assert after["representation"] == before["representation"]
 
 
+def test_managed_group_validation_preserves_error_when_cleanup_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cleanup failure must not mask an invalid container-state error."""
+    environment, _loader, container_node, _paths = _make_import_loader(
+        tmp_path,
+        monkeypatch,
+    )
+    user_group = environment.containers.get_user_group(container_node)
+    assert user_group is not None
+    user_group.delete()
+
+    replacement_group = environment.containers.create_managed_group(
+        container_node,
+        name="AYON_MANAGED_PENDING",
+        role=None,
+    )
+
+    def fail_delete():
+        raise RuntimeError("cleanup failed")
+
+    monkeypatch.setattr(replacement_group, "delete", fail_delete)
+
+    with pytest.raises(RuntimeError, match="missing its managed/user groups"):
+        environment.containers.replace_managed_group(
+            container_node,
+            replacement_group,
+            {"representation": "representation-updated"},
+        )
+
+
 def test_katana_update_metadata_failure_restores_existing_graph_and_metadata(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1101,6 +1133,47 @@ def test_katana_update_metadata_failure_restores_existing_graph_and_metadata(
         child.getName() == environment.katana._TEMP_MANAGED_GROUP_NAME
         for child in container_node.getChildren()
     )
+
+
+def test_katana_update_old_group_delete_failure_keeps_replacement_active(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Post-commit cleanup failure must not invalidate a successful update."""
+    environment, loader, container_node, paths = _make_import_loader(
+        tmp_path,
+        monkeypatch,
+    )
+    old_managed_group = environment.containers.get_managed_group(container_node)
+    user_group = environment.containers.get_user_group(container_node)
+    before = environment.containers.parse_container(container_node)
+    assert old_managed_group is not None
+    assert user_group is not None
+    assert before is not None
+
+    def fail_delete():
+        raise RuntimeError("old group delete failed")
+
+    monkeypatch.setattr(old_managed_group, "delete", fail_delete)
+
+    imported_nodes = loader.update(
+        before,
+        _context(paths["updated"], "representation-updated"),
+    )
+
+    new_managed_group = environment.containers.get_managed_group(container_node)
+    after = environment.containers.parse_container(container_node)
+    assert new_managed_group is not None
+    assert new_managed_group is not old_managed_group
+    assert old_managed_group in container_node.getChildren()
+    assert user_group.getInputPort("in").getConnectedPorts() == [
+        new_managed_group.getOutputPort("out")
+    ]
+    assert after is not None
+    assert after["representation"] == "representation-updated"
+    assert imported_nodes[0].getName() == "Imported_updated"
+    assert "Could not delete the previous managed group" in caplog.text
 
 
 def test_katana_import_loader_switch_and_remove_still_work(

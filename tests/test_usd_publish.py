@@ -463,10 +463,10 @@ def test_creator_connects_selected_output_and_persists_native_node(monkeypatch) 
 
     assert creator.export_node.input_port in source.output_port.connected
     assert created["instance_node"] == "usdLayerMain"
-    assert created["usd_export_node"] == "usdLayerMain"
+    assert "usd_export_node" not in created
     assert created["families"] == ["usd", "katana.usd"]
     assert creator.export_node.getParameter("usdFileFormat").value == "usda"
-    assert imprinted[-1][1]["usd_export_node"] == "usdLayerMain"
+    assert imprinted[-1][1]["instance_node"] == "usdLayerMain"
 
 
 def test_creator_requires_exactly_one_selected_source(monkeypatch) -> None:
@@ -516,9 +516,11 @@ def test_semantic_usd_creators_reuse_native_layer_contract(
     assert creator_class.default_time_samples == time_samples
 
 
+@pytest.mark.parametrize("legacy_alias", [None, "ObsoleteAlias"])
 def test_collect_validate_extract_produces_one_usd_representation(
     monkeypatch,
     tmp_path: Path,
+    legacy_alias,
 ) -> None:
     """Publish plug-ins read live settings and emit one verified USD layer."""
     usd = _load_usd_api(monkeypatch)
@@ -561,8 +563,10 @@ def test_collect_validate_extract_produces_one_usd_representation(
     assert extractor_module.ExtractUsdLayer.order == 2.5
 
     instance = types.SimpleNamespace(
-        data={"usd_export_node": node.getName(), "productName": "usdLayerMain"}
+        data={"instance_node": node.getName(), "productName": "usdLayerMain"}
     )
+    if legacy_alias is not None:
+        instance.data["usd_export_node"] = legacy_alias
 
     collector_module.CollectUsdLayer().process(instance)
     validator_module.ValidateUsdLayer().process(instance)
@@ -583,6 +587,25 @@ def test_collect_validate_extract_produces_one_usd_representation(
     assert node.getParameter("saveTo").value == "artist/original.usd"
 
 
+def test_missing_export_node_is_reported_during_validation(monkeypatch) -> None:
+    """An artist-deleted node yields the dedicated validator error after collection."""
+    usd = _load_usd_api(monkeypatch)
+    _install_publish_runtime(monkeypatch, {}, usd)
+    publish_path = ROOT / "client/ayon_katana/plugins/publish"
+    collector = _load_module(
+        monkeypatch, "missing_usd_collector", publish_path / "collect_usd_layer.py"
+    )
+    validator = _load_module(
+        monkeypatch, "missing_usd_validator", publish_path / "validate_usd_layer.py"
+    )
+    instance = types.SimpleNamespace(data={"instance_node": "DeletedExport"})
+
+    collector.CollectUsdLayer().process(instance)
+    with pytest.raises(FakeValidationError, match="does not exist") as caught:
+        validator.ValidateUsdLayer().process(instance)
+    assert caught.value.title == "USD export node missing"
+
+
 def test_validator_rejects_disconnected_native_export(monkeypatch) -> None:
     """A USD publish instance cannot pass without one native source."""
     usd = _load_usd_api(monkeypatch)
@@ -601,7 +624,7 @@ def test_validator_rejects_disconnected_native_export(monkeypatch) -> None:
 
     with pytest.raises(FakeValidationError, match="exactly one"):
         validator_module.ValidateUsdLayer().process(
-            types.SimpleNamespace(data={"usd_export_node": node.getName()})
+            types.SimpleNamespace(data={"instance_node": node.getName()})
         )
 
 
@@ -626,7 +649,7 @@ def test_validator_rejects_connected_geolib_source(monkeypatch) -> None:
 
     with pytest.raises(FakeValidationError, match="not a native USD node"):
         validator_module.ValidateUsdLayer().process(
-            types.SimpleNamespace(data={"usd_export_node": node.getName()})
+            types.SimpleNamespace(data={"instance_node": node.getName()})
         )
 
 

@@ -158,8 +158,6 @@ class CreateImage(plugin.KatanaCreator):
 
             node_name = image_write_node.getName()
             created_instance["instance_node"] = node_name
-            created_instance["image_write_node"] = node_name
-            created_instance["render_node"] = node_name
             instances.imprint(image_write_node, created_instance.data_to_store())
             return created_instance
         except Exception as exc:

@@ -53,10 +53,8 @@ def get_composed_source_stage(instance_data: dict[str, Any]) -> Any:
     """Return the composed source stage for a USD publish instance."""
     from ayon_katana.api import compat
 
-    node_name = instance_data.get("usd_export_node") or instance_data.get(
-        "instance_node"
-    )
-    export_node = compat.get_node(str(node_name)) if node_name else None
+    node_name = instance_data["instance_node"]
+    export_node = compat.get_node(node_name)
     if export_node is None:
         raise ValueError(f"Katana USD export node does not exist: {node_name!r}.")
     source_node = get_usd_export_source_node(export_node)

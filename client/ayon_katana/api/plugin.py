@@ -107,6 +107,7 @@ class KatanaCreator(Creator, KatanaCreatorBase):
                 data=instance_data,
                 creator=self,
             )
+            created_instance["instance_node"] = instance_node.getName()
             self.apply_staging_dir(created_instance)
             created_instance.transient_data["node"] = instance_node
             self._add_instance_to_context(created_instance)
@@ -126,7 +127,8 @@ class KatanaCreator(Creator, KatanaCreatorBase):
         self.cache_instance_data(self.collection_shared_data)
         cached_instances = self.collection_shared_data["katana_cached_instances"]
         for node, data in cached_instances.get(self.identifier, []):
-            instance_data = self.prepare_collected_instance_data(data)
+            instance_data = dict(self.prepare_collected_instance_data(data))
+            instance_data["instance_node"] = node.getName()
             created_instance = CreatedInstance.from_existing(instance_data, self)
             self.apply_staging_dir(created_instance)
             created_instance.transient_data["node"] = node
@@ -159,6 +161,7 @@ class KatanaCreator(Creator, KatanaCreatorBase):
 
             if "productName" in changes.changed_keys:
                 instance_node.setName(changes["productName"].new_value)
+            created_inst["instance_node"] = instance_node.getName()
             instances.imprint(instance_node, created_inst.data_to_store())
 
     def remove_instances(self, instances):

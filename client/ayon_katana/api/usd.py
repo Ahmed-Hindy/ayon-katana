@@ -157,8 +157,8 @@ def get_extracted_usd_layer_path(instance_data: dict[str, Any]) -> Path:
 def _rehydrate_usd_layer_export(node: Any) -> None:
     """Restore transient state omitted when Katana reopens the supertool.
 
-    Katana 9 serializes the ``UsdLayerExport`` node graph but does not restore
-    its private ``_layerDefineNode`` Python attribute. Its native ``write``
+    Katana 8 and 9 serialize the ``UsdLayerExport`` node graph but do not restore
+    its private ``_layerDefineNode`` Python attribute. The native ``write``
     method reads that attribute unconditionally. Rebuild only this transient
     reference from the optional ``define`` input without changing the scene.
 

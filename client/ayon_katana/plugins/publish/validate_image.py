@@ -31,10 +31,8 @@ class ValidateImage(
         """Validate the node, connection, and output settings."""
         if not self.is_active(instance.data):
             return
-        node_name = instance.data.get("image_write_node") or instance.data.get(
-            "instance_node"
-        )
-        image_write_node = compat.get_node(str(node_name)) if node_name else None
+        node_name = instance.data["instance_node"]
+        image_write_node = compat.get_node(node_name)
         if image_write_node is None:
             raise PublishValidationError(
                 f"Katana ImageWrite node does not exist: {node_name!r}",

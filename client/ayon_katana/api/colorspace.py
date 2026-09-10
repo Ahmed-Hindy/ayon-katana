@@ -42,7 +42,9 @@ class ARenderProduct:
 
 def _get_ocio_config_path() -> str:
     config_path = os.environ.get("OCIO", "")
-    return config_path if config_path and Path(config_path).is_file() else ""
+    if config_path and not Path(config_path).is_file():
+        raise FileNotFoundError(f"OCIO config does not exist: {config_path!r}")
+    return config_path
 
 
 def get_imageio_file_rule_colorspace(
@@ -53,7 +55,7 @@ def get_imageio_file_rule_colorspace(
     """Return an AYON ImageIO file-rule colorspace for an image path.
 
     Callers should check representation metadata before evaluating host or
-    global file rules.
+    global file rules. Configuration and Core API errors propagate.
 
     Args:
         filepath: Resolved image path used for file-rule matching.
@@ -62,8 +64,7 @@ def get_imageio_file_rule_colorspace(
 
     Returns:
         Matched colorspace name, or an empty string when host management is
-        disabled, context is incomplete, no config is available, or no rule
-        matches.
+        disabled, context is incomplete, or no rule matches.
     """
     project = context.get("project") or {}
     project_name = project.get("name")
@@ -73,12 +74,9 @@ def get_imageio_file_rule_colorspace(
     if project_settings is None:
         project_settings = context.get("project_settings")
     if project_settings is None:
-        try:
-            from ayon_core.pipeline.context_tools import get_current_project_settings
+        from ayon_core.settings import get_project_settings
 
-            project_settings = get_current_project_settings()
-        except Exception:
-            return ""
+        project_settings = get_project_settings(project_name)
 
     host_imageio = (project_settings.get("katana") or {}).get("imageio") or {}
     if not host_imageio.get("activate_host_color_management", True):
@@ -86,61 +84,56 @@ def get_imageio_file_rule_colorspace(
 
     folder = context.get("folder") or {}
     task = context.get("task") or {}
-    try:
-        from ayon_core.pipeline.colorspace import (
-            get_imageio_config_preset,
-            get_imageio_file_rules,
-            get_imageio_file_rules_colorspace_from_filepath,
-        )
+    from ayon_core.pipeline.colorspace import (
+        get_imageio_config_preset,
+        get_imageio_file_rules,
+        get_imageio_file_rules_colorspace_from_filepath,
+    )
 
-        config_data = get_imageio_config_preset(
-            project_name,
-            folder.get("path") or "",
-            task.get("name") or "",
+    config_data = get_imageio_config_preset(
+        project_name,
+        folder.get("path") or "",
+        task.get("name") or "",
+        "katana",
+        os.environ.get("AYON_APP_NAME"),
+        project_settings=project_settings,
+    )
+    if not config_data:
+        return ""
+    file_rules = get_imageio_file_rules(
+        project_name,
+        "katana",
+        project_settings,
+    )
+    return str(
+        get_imageio_file_rules_colorspace_from_filepath(
+            filepath,
             "katana",
-            os.environ.get("AYON_APP_NAME"),
+            project_name,
+            config_data,
+            file_rules=file_rules,
             project_settings=project_settings,
         )
-        if not config_data:
-            return ""
-        file_rules = get_imageio_file_rules(
-            project_name,
-            "katana",
-            project_settings,
-        )
-        return str(
-            get_imageio_file_rules_colorspace_from_filepath(
-                filepath,
-                "katana",
-                project_name,
-                config_data,
-                file_rules=file_rules,
-                project_settings=project_settings,
-            )
-            or ""
-        )
-    except Exception:
-        return ""
+        or ""
+    )
 
 
 def get_scene_linear_colorspace() -> str:
     """Return colorspace name for Katana's OCIO scene linear role.
 
     By default, renderers in Katana render output images in the scene linear
-    role colorspace.
+    role colorspace. Config parsing errors propagate from Core.
 
     Returns:
         The colorspace name for the ``scene_linear`` role in the active OCIO
-        config, or an empty string when unavailable.
+        config, or an empty string when OCIO or the role is not configured.
+
+    Raises:
+        FileNotFoundError: The configured OCIO file does not exist.
     """
     ocio_config_path = _get_ocio_config_path()
     if not ocio_config_path:
         return ""
 
-    try:
-        colorspaces = get_ocio_config_colorspaces(ocio_config_path)
-    except Exception:
-        return ""
-    return str(
-        colorspaces.get("roles", {}).get("scene_linear", {}).get("colorspace", "")
-    )
+    colorspaces = get_ocio_config_colorspaces(ocio_config_path)
+    return colorspaces["roles"].get("scene_linear", {}).get("colorspace", "")

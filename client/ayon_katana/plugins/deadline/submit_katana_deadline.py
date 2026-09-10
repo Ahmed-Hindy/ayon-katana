@@ -55,9 +55,7 @@ class KatanaSubmitDeadline(
     def get_plugin_info(self, **_kwargs):
         """Build Deadline CommandLine plugin data."""
         executable = render.get_katana_executable()
-        render_node = self._instance.data.get("render_node") or self._instance.data.get(
-            "image_write_node"
-        )
+        render_node = self._instance.data["render_node"]
         if not render_node:
             raise RuntimeError(
                 "Katana Deadline submission has no Render or ImageWrite node."

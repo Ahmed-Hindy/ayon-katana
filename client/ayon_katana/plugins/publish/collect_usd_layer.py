@@ -17,18 +17,14 @@ class CollectUsdLayer(plugin.KatanaInstancePlugin):
 
     def process(self, instance) -> None:
         """Collect the export node settings."""
-        node_name = instance.data.get("usd_export_node") or instance.data.get(
-            "instance_node"
-        )
-        export_node = compat.get_node(str(node_name)) if node_name else None
+        node_name = instance.data["instance_node"]
+        export_node = compat.get_node(node_name)
         if export_node is None:
             return
 
         settings = read_usd_layer_export_settings(export_node)
         instance.data.update(
             {
-                "instance_node": export_node.getName(),
-                "usd_export_node": export_node.getName(),
                 "usdFileFormat": settings["file_format"],
                 "usdTimeSamples": settings["time_samples"],
                 "usdFrameStart": settings["frame_start"],

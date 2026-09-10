@@ -7,15 +7,6 @@ from ayon_core.pipeline.publish import PublishValidationError
 from ayon_katana.api import plugin
 
 
-def _first_value(data: dict, *keys: str):
-    """Return the first non-empty value from candidate keys."""
-    for key in keys:
-        value = data.get(key)
-        if value not in (None, ""):
-            return value
-    return None
-
-
 class ValidateWorkfileContext(
     plugin.KatanaInstancePlugin,
     OptionalPyblishPluginMixin,
@@ -32,21 +23,18 @@ class ValidateWorkfileContext(
         if not self.is_active(instance.data):
             return
 
-        """Compare the root-node context with the current publish context."""
         embedded = registered_host().get_context_data()
         publish_context = instance.context.data
 
         expected = {
-            "project": _first_value(publish_context, "projectName", "project_name"),
-            "folder": _first_value(instance.data, "folderPath", "folder_path")
-            or _first_value(publish_context, "folderPath", "folder_path"),
-            "task": _first_value(instance.data, "task", "taskName", "task_name")
-            or _first_value(publish_context, "task", "taskName", "task_name"),
+            "project": publish_context["projectName"],
+            "folder": instance.data.get("folderPath"),
+            "task": instance.data.get("task"),
         }
         actual = {
-            "project": _first_value(embedded, "project_name", "projectName"),
-            "folder": _first_value(embedded, "folder_path", "folderPath"),
-            "task": _first_value(embedded, "task_name", "taskName", "task"),
+            "project": embedded.get("project_name"),
+            "folder": embedded.get("folder_path"),
+            "task": embedded.get("task_name"),
         }
 
         mismatches = {

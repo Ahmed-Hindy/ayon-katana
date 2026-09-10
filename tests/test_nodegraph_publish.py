@@ -75,7 +75,9 @@ class FakeKatanaCreator:
 
     def create(self, _product_name, instance_data, _pre_create_data):
         """Return a fake created instance from prepared data."""
-        return FakeCreatedInstance(instance_data)
+        instance = FakeCreatedInstance(instance_data)
+        instance["instance_node"] = instance.transient_data["node"].getName()
+        return instance
 
 
 class FakeCreatorError(RuntimeError):
@@ -239,7 +241,7 @@ def test_creator_persists_selected_group_name_and_separate_instance(
 ) -> None:
     """The nodegraph instance persists its source name and creator node name."""
     source_group = FakeNode("PublishedGroup")
-    module, imprinted = _load_creator(monkeypatch, [source_group])
+    module, _imprinted = _load_creator(monkeypatch, [source_group])
     creator = object.__new__(module.CreateNodegraph)
 
     created = creator.create("nodegraphMain", {"families": []}, {})
@@ -247,7 +249,6 @@ def test_creator_persists_selected_group_name_and_separate_instance(
     assert created["nodegraph_node"] == "PublishedGroup"
     assert created["instance_node"] == "nodegraphMainInstance"
     assert "nodegraph" in created["families"]
-    assert imprinted[-1][1]["nodegraph_node"] == "PublishedGroup"
 
 
 def test_render_setup_creator_reuses_nodegraph_contract(monkeypatch) -> None:

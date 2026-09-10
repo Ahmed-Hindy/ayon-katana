@@ -32,10 +32,8 @@ class ValidateUsdLayer(
         if not self.is_active(instance.data):
             return
 
-        node_name = instance.data.get("usd_export_node") or instance.data.get(
-            "instance_node"
-        )
-        export_node = compat.get_node(str(node_name)) if node_name else None
+        node_name = instance.data["instance_node"]
+        export_node = compat.get_node(node_name)
         if export_node is None:
             raise PublishValidationError(
                 f"Katana USD export node does not exist: {node_name!r}",

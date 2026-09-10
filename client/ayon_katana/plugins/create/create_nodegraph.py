@@ -6,7 +6,7 @@ from typing import Any
 
 from ayon_core.pipeline import CreatorError
 
-from ayon_katana.api import compat, containers, instances, plugin
+from ayon_katana.api import compat, containers, plugin
 
 
 class CreateNodegraph(plugin.KatanaCreator):
@@ -57,15 +57,11 @@ class CreateNodegraph(plugin.KatanaCreator):
         if "nodegraph" not in families:
             families.append("nodegraph")
 
-        created_instance = super().create(
+        return super().create(
             product_name,
             instance_data,
             pre_create_data,
         )
-        instance_node = created_instance.transient_data["node"]
-        created_instance["instance_node"] = instance_node.getName()
-        instances.imprint(instance_node, created_instance.data_to_store())
-        return created_instance
 
 
 class CreateRenderSetup(CreateNodegraph):

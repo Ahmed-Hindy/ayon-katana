@@ -44,6 +44,11 @@ class FakeHost:
         self.dirty = dirty
         self.save_calls: list[str] = []
         self.save_error: Exception | None = None
+        self.context_data = {}
+
+    def get_context_data(self) -> dict:
+        """Return context embedded in the fake scene."""
+        return self.context_data
 
     def get_current_workfile(self) -> str:
         """Return the current fake scene path."""
@@ -206,6 +211,166 @@ def _load_publish_modules(monkeypatch, host: FakeHost):
 def _context(path: Path | str) -> types.SimpleNamespace:
     """Create a lightweight Pyblish context."""
     return types.SimpleNamespace(data={"currentFile": str(path)})
+
+
+@pytest.fixture
+def workfile_context(monkeypatch):
+    """Load context validation with canonical producer data."""
+    host = FakeHost("scene.katana")
+    host.context_data = {
+        "project_name": "TestProject",
+        "folder_path": "/shots/010",
+        "task_name": "lighting",
+    }
+    _load_publish_modules(monkeypatch, host)
+    module = _load_module(
+        "ayon_katana.plugins.publish.validate_workfile_context",
+        ROOT / "client/ayon_katana/plugins/publish/validate_workfile_context.py",
+        monkeypatch,
+    )
+    instance = types.SimpleNamespace(
+        data={"folderPath": "/shots/010", "task": "lighting"},
+        context=types.SimpleNamespace(
+            data={
+                "projectName": "TestProject",
+                "folderPath": "/shots/010",
+                "task": "lighting",
+            }
+        ),
+    )
+    return module.ValidateWorkfileContext(), instance, host.context_data
+
+
+def test_workfile_context_matches_canonical_fields(workfile_context):
+    """Canonical producer values match without alternate key spellings."""
+    validator, instance, _embedded = workfile_context
+    validator.process(instance)
+
+
+@pytest.mark.parametrize(
+    ("field", "label"),
+    [("project_name", "project"), ("folder_path", "folder"), ("task_name", "task")],
+)
+def test_workfile_context_reports_mismatch(workfile_context, field, label):
+    """Each mismatch identifies expected and embedded values."""
+    validator, instance, embedded = workfile_context
+    expected = embedded[field]
+    embedded[field] = "different"
+    with pytest.raises(FakePublishValidationError) as exc_info:
+        validator.process(instance)
+    assert f"{label}: expected {expected!r}, embedded 'different'" in str(
+        exc_info.value
+    )
+
+
+def test_workfile_context_requires_publish_project_name(workfile_context):
+    """The authoritative publish context must provide its canonical project key."""
+    validator, instance, _embedded = workfile_context
+    del instance.context.data["projectName"]
+    with pytest.raises(KeyError, match="projectName"):
+        validator.process(instance)
+
+
+@pytest.mark.parametrize(
+    ("source", "field"),
+    [
+        ("workfile instance", "folderPath"),
+        ("workfile instance", "task"),
+        ("embedded context", "project_name"),
+        ("embedded context", "folder_path"),
+        ("embedded context", "task_name"),
+    ],
+)
+def test_workfile_context_rejects_missing_persisted_metadata(
+    workfile_context, source, field
+):
+    """Missing persisted metadata is reported as a context mismatch."""
+    validator, instance, embedded = workfile_context
+    data = {
+        "workfile instance": instance.data,
+        "embedded context": embedded,
+    }[source]
+    del data[field]
+    with pytest.raises(FakePublishValidationError) as exc_info:
+        validator.process(instance)
+    assert exc_info.value.title == "Katana workfile context mismatch"
+
+
+@pytest.mark.parametrize(
+    ("source", "field"),
+    [
+        ("publish context", "projectName"),
+        ("workfile instance", "folderPath"),
+        ("workfile instance", "task"),
+        ("embedded context", "project_name"),
+        ("embedded context", "folder_path"),
+        ("embedded context", "task_name"),
+    ],
+)
+@pytest.mark.parametrize("empty", [None, ""])
+def test_workfile_context_rejects_empty_canonical_values(
+    workfile_context, source, field, empty
+):
+    """Present but empty canonical values remain artist-facing mismatches."""
+    validator, instance, embedded = workfile_context
+    data = {
+        "publish context": instance.context.data,
+        "workfile instance": instance.data,
+        "embedded context": embedded,
+    }[source]
+    data[field] = empty
+    with pytest.raises(FakePublishValidationError) as exc_info:
+        validator.process(instance)
+    assert exc_info.value.title == "Katana workfile context mismatch"
+
+
+def test_workfile_context_rejects_entirely_missing_context(workfile_context):
+    """Absent producer context surfaces the first missing canonical key."""
+    validator, instance, embedded = workfile_context
+    instance.context.data.clear()
+    instance.data.clear()
+    embedded.clear()
+    with pytest.raises(KeyError, match="projectName"):
+        validator.process(instance)
+
+
+def test_workfile_context_rejects_alias_only_data(workfile_context):
+    """Alternate spellings cannot substitute for producer keys."""
+    validator, instance, embedded = workfile_context
+    instance.context.data = {"project_name": "TestProject"}
+    instance.data = {"folder_path": "/shots/010", "task_name": "lighting"}
+    embedded.clear()
+    embedded.update(
+        projectName="TestProject", folderPath="/shots/010", taskName="lighting"
+    )
+    with pytest.raises(KeyError, match="projectName"):
+        validator.process(instance)
+
+
+def test_workfile_context_ignores_conflicting_aliases(workfile_context):
+    """Only canonical fields determine the comparison result."""
+    validator, instance, embedded = workfile_context
+    instance.context.data.update(project_name="wrong", folderPath="wrong", task="wrong")
+    instance.data.update(folder_path="wrong", taskName="wrong", task_name="wrong")
+    embedded.update(
+        projectName="wrong", folderPath="wrong", taskName="wrong", task="wrong"
+    )
+    validator.process(instance)
+    embedded["task_name"] = "different"
+    embedded["task"] = "lighting"
+    with pytest.raises(FakePublishValidationError, match="task: expected"):
+        validator.process(instance)
+
+
+def test_workfile_context_can_be_disabled(workfile_context):
+    """Optional validation does not require context when disabled."""
+    validator, instance, embedded = workfile_context
+    instance.context.data.clear()
+    embedded.clear()
+    instance.data = {
+        "publish_attributes": {"ValidateWorkfileContext": {"active": False}}
+    }
+    validator.process(instance)
 
 
 def test_collect_preserves_unsupported_asset_identifier_for_validation(

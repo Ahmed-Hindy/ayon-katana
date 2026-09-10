@@ -210,7 +210,7 @@ def test_image_payload_uses_imagewrite_and_image_job_label(
         name="imageMain",
         data={
             "families": ["image", "katana.image", "render.farm"],
-            "image_write_node": "imageMain",
+            "render_node": "imageMain",
             "frameStartHandle": 1001,
             "frameEndHandle": 1003,
             "byFrameStep": 1,

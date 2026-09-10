@@ -22,31 +22,13 @@ class CollectImage(plugin.KatanaInstancePlugin):
 
     def process(self, instance) -> None:
         """Collect live node settings, range, expected files, and metadata."""
-        transient_data = instance.data.get("transientData") or {}
-        image_write_node = transient_data.get("node")
-        if image_write_node is not None:
-            try:
-                node_name = image_write_node.getName()
-            except Exception:
-                image_write_node = None
-        if image_write_node is None:
-            node_name = instance.data.get("image_write_node") or instance.data.get(
-                "instance_node"
-            )
-            image_write_node = compat.get_node(str(node_name)) if node_name else None
+        node_name = instance.data["instance_node"]
+        image_write_node = compat.get_node(node_name)
         if image_write_node is None:
             raise RuntimeError(
                 f"Katana ImageWrite instance node does not exist: {node_name!r}"
             )
 
-        node_name = image_write_node.getName()
-        instance.data.update(
-            {
-                "instance_node": node_name,
-                "image_write_node": node_name,
-                "render_node": node_name,
-            }
-        )
         settings = read_image_write_settings(image_write_node)
         if settings["single_frame"]:
             frame_start = frame_end = settings["frame"]
@@ -79,8 +61,6 @@ class CollectImage(plugin.KatanaInstancePlugin):
 
         instance.data.update(
             {
-                "instance_node": image_write_node.getName(),
-                "image_write_node": image_write_node.getName(),
                 "render_node": image_write_node.getName(),
                 "imageOutputPath": settings["output_path"],
                 "imageFileFormat": settings["file_format"],

@@ -270,7 +270,7 @@ def test_creator_connects_image_source_and_persists_farm_contract(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
-    """Creator makes ImageWrite both the instance and batch render node."""
+    """Creator persists one ImageWrite identity and the chosen farm attributes."""
 
     class Source:
         def __init__(self) -> None:
@@ -309,8 +309,9 @@ def test_creator_connects_image_source_and_persists_farm_contract(
     )
 
     assert creator.image_write_node.input_port in source.output_port.connected
-    assert created["image_write_node"] == "imageMain"
-    assert created["render_node"] == "imageMain"
+    assert created["instance_node"] == "imageMain"
+    assert "image_write_node" not in created
+    assert "render_node" not in created
     assert created["farm"] is True
     assert created["families"] == ["image", "katana.image", "render.farm"]
     assert imprinted[-1][1]["creator_attributes"] == {
@@ -430,7 +431,7 @@ def test_collect_and_validate_image_builds_local_and_farm_metadata(
     collector, validator = _load_publish_modules(monkeypatch, node)
     instance = types.SimpleNamespace(
         data={
-            "image_write_node": node.getName(),
+            "instance_node": node.getName(),
             "creator_attributes": {"render_target": "farm", "review": True},
             "families": ["image", "katana.image"],
         }
@@ -457,8 +458,8 @@ def test_collect_and_validate_image_builds_local_and_farm_metadata(
     assert instance.data["colorspace"] == "sRGB"
 
 
-def test_collector_refreshes_canonical_imagewrite_node_name(monkeypatch) -> None:
-    """Live transient node identity wins when Katana canonicalizes ImageWrite names."""
+def test_collector_uses_canonical_name_despite_stale_legacy_alias(monkeypatch) -> None:
+    """Collection uses the creator's canonical name instead of obsolete aliases."""
     node = FakeImageWriteNode()
     node.name = "comp1"
     FakePort().connect(node.input_port)
@@ -466,7 +467,7 @@ def test_collector_refreshes_canonical_imagewrite_node_name(monkeypatch) -> None
     instance = types.SimpleNamespace(
         data={
             "image_write_node": "imageRequestedName",
-            "instance_node": "imageRequestedName",
+            "instance_node": "comp1",
             "render_node": "imageRequestedName",
             "transientData": {"node": node},
             "creator_attributes": {"render_target": "farm", "review": False},
@@ -477,7 +478,7 @@ def test_collector_refreshes_canonical_imagewrite_node_name(monkeypatch) -> None
     collector.CollectImage().process(instance)
     validator.ValidateImage().process(instance)
 
-    assert instance.data["image_write_node"] == "comp1"
+    assert instance.data["image_write_node"] == "imageRequestedName"
     assert instance.data["instance_node"] == "comp1"
     assert instance.data["render_node"] == "comp1"
 
@@ -489,7 +490,7 @@ def test_collector_preserves_existing_frame_image_target(monkeypatch) -> None:
     collector, validator = _load_publish_modules(monkeypatch, node)
     instance = types.SimpleNamespace(
         data={
-            "image_write_node": node.getName(),
+            "instance_node": node.getName(),
             "creator_attributes": {
                 "render_target": "local_no_render",
                 "review": False,
@@ -512,7 +513,7 @@ def test_validator_rejects_missing_source_and_review_colorspace(monkeypatch) -> 
     collector, validator = _load_publish_modules(monkeypatch, node)
     instance = types.SimpleNamespace(
         data={
-            "image_write_node": node.getName(),
+            "instance_node": node.getName(),
             "creator_attributes": {"render_target": "local", "review": False},
             "families": ["image", "katana.image"],
         }

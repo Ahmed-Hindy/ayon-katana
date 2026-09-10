@@ -132,7 +132,6 @@ class CreateUsdLayer(plugin.KatanaCreator):
                 source_port.connect(input_port)
 
             created_instance["instance_node"] = export_node.getName()
-            created_instance["usd_export_node"] = export_node.getName()
             instances.imprint(export_node, created_instance.data_to_store())
             return created_instance
         except Exception as exc:

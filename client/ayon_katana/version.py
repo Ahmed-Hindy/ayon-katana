@@ -1,3 +1,3 @@
 """Version metadata for the AYON Katana client package."""
 
-__version__ = "0.1.63+dev"
+__version__ = "0.1.64"

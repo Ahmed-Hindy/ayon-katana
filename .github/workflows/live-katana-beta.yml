@@ -1,0 +1,90 @@
+name: 🧪 [BETA/WIP] Live Katana (self-hosted)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_beta:
+        description: "Run the beta live Katana suite on a configured self-hosted runner"
+        required: true
+        type: boolean
+        default: false
+      suite:
+        description: "Live suite"
+        required: true
+        type: choice
+        options:
+          - native
+          - integration
+        default: native
+      applications:
+        description: "Comma-separated AYON application names"
+        required: true
+        type: string
+        default: "katana/9.0v1,katana/8.0v1"
+
+permissions:
+  contents: read
+
+jobs:
+  live-katana-beta:
+    name: BETA/WIP live Katana
+    if: ${{ inputs.confirm_beta }}
+    runs-on:
+      - self-hosted
+      - Windows
+      - ayon-katana-live
+    timeout-minutes: 30
+    env:
+      AYON_CONSOLE: ${{ vars.AYON_CONSOLE }}
+      AYON_KATANA_LIVE_PROJECT: ${{ vars.AYON_KATANA_LIVE_PROJECT }}
+      AYON_KATANA_LIVE_FOLDER: ${{ vars.AYON_KATANA_LIVE_FOLDER }}
+      AYON_KATANA_LIVE_TASK: ${{ vars.AYON_KATANA_LIVE_TASK }}
+      AYON_KATANA_LIVE_APPLICATIONS: ${{ inputs.applications }}
+      AYON_KATANA_LIVE_SUITE: ${{ inputs.suite }}
+      AYON_KATANA_LIVE_OUTPUT: ${{ github.workspace }}\.artifacts\live-katana
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate beta runner configuration
+        shell: pwsh
+        run: |
+          if (-not $env:AYON_CONSOLE) {
+            throw "Repository variable AYON_CONSOLE is not configured."
+          }
+          if (-not (Test-Path -LiteralPath $env:AYON_CONSOLE)) {
+            throw "AYON_CONSOLE does not exist on this runner: $env:AYON_CONSOLE"
+          }
+          foreach ($name in @(
+            "AYON_KATANA_LIVE_PROJECT",
+            "AYON_KATANA_LIVE_FOLDER",
+            "AYON_KATANA_LIVE_TASK"
+          )) {
+            if (-not [Environment]::GetEnvironmentVariable($name)) {
+              throw "Required repository variable is not configured: $name"
+            }
+          }
+      - name: Run BETA/WIP live Katana suite
+        shell: pwsh
+        run: |
+          & .\tests\live\katana\run-local.ps1 `
+            -AyonConsole $env:AYON_CONSOLE `
+            -Project $env:AYON_KATANA_LIVE_PROJECT `
+            -Folder $env:AYON_KATANA_LIVE_FOLDER `
+            -Task $env:AYON_KATANA_LIVE_TASK `
+            -Applications $env:AYON_KATANA_LIVE_APPLICATIONS `
+            -Suite $env:AYON_KATANA_LIVE_SUITE `
+            -AyonVariant staging `
+            -QuietHostOutput `
+            -PublicOutput `
+            -Output $env:AYON_KATANA_LIVE_OUTPUT
+
+      - name: Upload live Katana artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-katana-beta-${{ github.run_id }}
+          path: .artifacts/live-katana/public-summary.json
+          if-no-files-found: warn
+          retention-days: 7

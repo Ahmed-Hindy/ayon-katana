@@ -19,7 +19,7 @@ _USER_ROLE = "user"
 MANAGED_GROUP_NAME = "AYON_MANAGED"
 USER_GROUP_NAME = "USER"
 SOURCE_ROLE = "source"
-_PREVIOUS_MANAGED_GROUP_NAME = "AYON_MANAGED_PREVIOUS"
+_OLD_MANAGED_GROUP_NAME = "AYON_MANAGED_OLD"
 
 
 def imprint(node, data: dict[str, Any]) -> None:
@@ -233,36 +233,12 @@ def update_container(container_node, data: dict[str, Any]) -> None:
     imprint(container_node, current_data)
 
 
-def _safe_call(callback, *args) -> None:
-    """Best-effort one rollback operation without masking the root failure."""
-    with suppress(Exception):
-        callback(*args)
-
-
-def _restore_managed_group(
-    container_node,
-    previous_group,
-    replacement_group,
-    user_group,
-    previous_name: str,
-    replacement_name: str,
-    previous_data: dict[str, Any],
-) -> None:
-    """Restore the previous managed graph after a failed replacement."""
-    _safe_call(disconnect_managed_group_from_user, replacement_group, user_group)
-    _safe_call(replacement_group.setName, replacement_name)
-    _safe_call(previous_group.setName, previous_name)
-    _safe_call(connect_managed_group_to_user, previous_group, user_group)
-    _safe_call(update_container, container_node, previous_data)
-    _safe_call(replacement_group.delete)
-
-
 def replace_managed_group(
     container_node,
     replacement_group,
     data: dict[str, Any],
 ) -> None:
-    """Atomically replace a container's managed graph and metadata."""
+    """Replace the managed graph, restoring the previous state on failure."""
     previous_group = get_managed_group(container_node)
     user_group = get_user_group(container_node)
     if previous_group is None or user_group is None:
@@ -275,26 +251,34 @@ def replace_managed_group(
         raise RuntimeError("The AYON Katana container has invalid metadata.")
     previous_data.pop("node", None)
     previous_data.pop("objectName", None)
+
     previous_name = previous_group.getName()
     replacement_name = replacement_group.getName()
+
+    def rollback() -> None:
+        """Best-effort restore without masking the original failure."""
+        with suppress(Exception):
+            disconnect_managed_group_from_user(replacement_group, user_group)
+        with suppress(Exception):
+            replacement_group.setName(replacement_name)
+        with suppress(Exception):
+            previous_group.setName(previous_name)
+        with suppress(Exception):
+            connect_managed_group_to_user(previous_group, user_group)
+        with suppress(Exception):
+            imprint(container_node, previous_data)
+        with suppress(Exception):
+            replacement_group.delete()
 
     try:
         disconnect_managed_group_from_user(previous_group, user_group)
         connect_managed_group_to_user(replacement_group, user_group)
-        set_managed_group_role(replacement_group)
-        previous_group.setName(_PREVIOUS_MANAGED_GROUP_NAME)
+        previous_group.setName(_OLD_MANAGED_GROUP_NAME)
         replacement_group.setName(MANAGED_GROUP_NAME)
+        set_managed_group_role(replacement_group)
         update_container(container_node, data)
     except Exception:
-        _restore_managed_group(
-            container_node,
-            previous_group,
-            replacement_group,
-            user_group,
-            previous_name,
-            replacement_name,
-            previous_data,
-        )
+        rollback()
         raise
 
     previous_group.delete()

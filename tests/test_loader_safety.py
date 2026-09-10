@@ -1053,6 +1053,59 @@ def test_katana_update_invalid_graph_preserves_existing_graph_and_metadata(
     assert after["representation"] == before["representation"]
 
 
+def test_katana_update_metadata_failure_restores_existing_graph_and_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A metadata write failure restores the previous graph and container state."""
+    environment, loader, container_node, paths = _make_import_loader(
+        tmp_path,
+        monkeypatch,
+    )
+    old_managed_group = environment.containers.get_managed_group(container_node)
+    user_group = environment.containers.get_user_group(container_node)
+    before = environment.containers.parse_container(container_node)
+    assert old_managed_group is not None
+    assert user_group is not None
+    assert before is not None
+
+    original_update_container = environment.containers.update_container
+
+    def fail_after_metadata_write(node, data):
+        original_update_container(node, data)
+        if data.get("representation") == "representation-updated":
+            raise ValueError("metadata write failed")
+
+    monkeypatch.setattr(
+        environment.katana.containers,
+        "update_container",
+        fail_after_metadata_write,
+    )
+
+    with pytest.raises(ValueError, match="metadata write failed"):
+        loader.update(
+            before,
+            _context(paths["updated"], "representation-updated"),
+        )
+
+    after = environment.containers.parse_container(container_node)
+    assert after is not None
+    assert environment.containers.get_managed_group(container_node) is old_managed_group
+    assert not old_managed_group.deleted
+    assert after["representation"] == before["representation"]
+    assert user_group.getInputPort("in").getConnectedPorts() == [
+        old_managed_group.getOutputPort("out")
+    ]
+    assert not any(
+        child.getName()
+        in {
+            environment.katana._TEMP_MANAGED_GROUP_NAME,
+            environment.katana._PREVIOUS_MANAGED_GROUP_NAME,
+        }
+        for child in container_node.getChildren()
+    )
+
+
 def test_katana_import_loader_switch_and_remove_still_work(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

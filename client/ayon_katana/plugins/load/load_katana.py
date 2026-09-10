@@ -9,6 +9,7 @@ from ayon_katana.api import compat, containers, plugin
 
 _IMPORT_ROLE = "import_combine"
 _TEMP_MANAGED_GROUP_NAME = "AYON_MANAGED_PENDING"
+_PREVIOUS_MANAGED_GROUP_NAME = "AYON_MANAGED_PREVIOUS"
 
 
 class KatanaImportLoader(plugin.KatanaLoader):
@@ -145,20 +146,47 @@ class KatanaImportLoader(plugin.KatanaLoader):
                     temporary_group.delete()
             raise
 
-        containers.disconnect_managed_group_from_user(managed_group, user_group)
-        containers.connect_managed_group_to_user(temporary_group, user_group)
-        containers.set_managed_group_role(temporary_group)
-        managed_group.delete()
-        temporary_group.setName(containers.MANAGED_GROUP_NAME)
-
+        old_container_data = containers.parse_container(container_node)
+        if old_container_data is None:
+            temporary_group.delete()
+            raise RuntimeError("The AYON Katana container has invalid metadata.")
+        old_container_data.pop("node", None)
+        old_container_data.pop("objectName", None)
+        old_managed_name = managed_group.getName()
         project = context.get("project") or {}
-        containers.update_container(
-            container_node,
-            {
-                "representation": context["representation"]["id"],
-                "project_name": project.get("name"),
-            },
-        )
+
+        try:
+            containers.disconnect_managed_group_from_user(managed_group, user_group)
+            containers.connect_managed_group_to_user(temporary_group, user_group)
+            containers.set_managed_group_role(temporary_group)
+            managed_group.setName(_PREVIOUS_MANAGED_GROUP_NAME)
+            temporary_group.setName(containers.MANAGED_GROUP_NAME)
+            containers.update_container(
+                container_node,
+                {
+                    "representation": context["representation"]["id"],
+                    "project_name": project.get("name"),
+                },
+            )
+        except Exception:
+            with suppress(Exception):
+                containers.disconnect_managed_group_from_user(
+                    temporary_group,
+                    user_group,
+                )
+            with suppress(Exception):
+                temporary_group.setName(_TEMP_MANAGED_GROUP_NAME)
+            with suppress(Exception):
+                managed_group.setName(old_managed_name)
+            with suppress(Exception):
+                containers.connect_managed_group_to_user(managed_group, user_group)
+            with suppress(Exception):
+                containers.update_container(container_node, old_container_data)
+            with suppress(Exception):
+                temporary_group.delete()
+            raise
+
+        managed_group.delete()
         return imported_nodes
 
     def remove(self, container):

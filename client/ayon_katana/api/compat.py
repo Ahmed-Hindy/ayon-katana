@@ -19,11 +19,7 @@ def iter_nodes(parent_node=None):
 
 def is_descendant(node, parent_node):
     """Return whether a node is nested below another Katana node."""
-    get_parent = getattr(node, "getParent", None)
-    if get_parent is None:
-        return False
-
-    current_node = get_parent()
+    current_node = node.getParent()
     while current_node is not None:
         if current_node is parent_node:
             return True
@@ -33,8 +29,7 @@ def is_descendant(node, parent_node):
 
 def get_output_ports(node):
     """Return all native output ports exposed by a Katana node."""
-    get_ports = getattr(node, "getOutputPorts", None)
-    return list(get_ports() or []) if get_ports is not None else []
+    return list(node.getOutputPorts() or [])
 
 
 def get_node(node_name: str):

@@ -40,7 +40,8 @@ class ARenderProduct:
         self.layer_data = LayerMetadata(products=products)
 
 
-def _get_ocio_config_path() -> str:
+def get_ocio_config_path() -> str:
+    """Return the active OCIO config path, validating explicit paths."""
     config_path = os.environ.get("OCIO", "")
     if config_path and not Path(config_path).is_file():
         raise FileNotFoundError(f"OCIO config does not exist: {config_path!r}")
@@ -131,7 +132,7 @@ def get_scene_linear_colorspace() -> str:
     Raises:
         FileNotFoundError: The configured OCIO file does not exist.
     """
-    ocio_config_path = _get_ocio_config_path()
+    ocio_config_path = get_ocio_config_path()
     if not ocio_config_path:
         return ""
 

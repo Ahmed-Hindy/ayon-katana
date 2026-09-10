@@ -26,7 +26,7 @@ _UDIM_PATTERN = re.compile(r"<UDIM>", re.IGNORECASE)
 
 
 def _path_string(path: Any) -> str:
-    return getattr(path, "pathString", None) or str(path)
+    return path.pathString or str(path)
 
 
 def _iter_property_paths(layer: Any) -> list[Any]:
@@ -44,37 +44,34 @@ def _iter_property_paths(layer: Any) -> list[Any]:
 def _flatten_asset_values(value: Any) -> Iterable[Any]:
     if value is None:
         return
-    if hasattr(value, "path"):
-        yield value
-        return
-    if isinstance(value, (str, bytes)):
+    if isinstance(value, str):
         yield value
         return
     try:
         iterator = iter(value)
     except TypeError:
+        yield value
         return
-    for item in iterator:
-        if hasattr(item, "path") or isinstance(item, str):
-            yield item
+    yield from iterator
 
 
 def _asset_path(asset: Any) -> str:
-    return str(getattr(asset, "path", asset) or "")
+    if isinstance(asset, str):
+        return asset
+    return str(asset.path or "")
 
 
 def _resolved_asset_hint(asset: Any) -> str:
-    return str(getattr(asset, "resolvedPath", "") or "")
+    if isinstance(asset, str):
+        return ""
+    return str(asset.resolvedPath or "")
 
 
 def _iter_asset_values(layer: Any, path: Any, spec: Any) -> list[Any]:
     """Return unique default and time-sampled asset values from a spec."""
-    values = list(_flatten_asset_values(getattr(spec, "default", None)))
-    list_samples = getattr(layer, "ListTimeSamplesForPath", None)
-    query_sample = getattr(layer, "QueryTimeSample", None)
-    if callable(list_samples) and callable(query_sample):
-        for time_code in list_samples(path) or []:
-            values.extend(_flatten_asset_values(query_sample(path, time_code)))
+    values = list(_flatten_asset_values(spec.default))
+    for time_code in layer.ListTimeSamplesForPath(path) or []:
+        values.extend(_flatten_asset_values(layer.QueryTimeSample(path, time_code)))
 
     output = []
     seen = set()
@@ -88,8 +85,8 @@ def _iter_asset_values(layer: Any, path: Any, spec: Any) -> list[Any]:
 
 
 def _layer_anchor_path(layer: Any) -> str:
-    for attribute in ("realPath", "resolvedPath", "identifier"):
-        value = str(getattr(layer, attribute, "") or "")
+    for value in (layer.realPath, layer.resolvedPath, layer.identifier):
+        value = str(value or "")
         if not value or value.startswith("anon:") or _URI_PATTERN.match(value):
             continue
         path = Path(value)
@@ -105,12 +102,9 @@ def _resolve_relative_asset(layer: Any, authored: str, hint: str = "") -> str:
     if Path(authored).is_absolute():
         return os.path.normpath(authored)
 
-    try:
-        from pxr import Sdf
+    from pxr import Sdf
 
-        resolved = Sdf.ComputeAssetPathRelativeToLayer(layer, authored)
-    except Exception:
-        resolved = ""
+    resolved = Sdf.ComputeAssetPathRelativeToLayer(layer, authored)
     if resolved and Path(resolved).is_absolute():
         return os.path.normpath(resolved)
 
@@ -124,16 +118,13 @@ def _build_source_anchor_map(source_stage: Any) -> dict[tuple[str, str], set[str
     """Map authored relative asset values to original source-layer locations."""
     if source_stage is None:
         return {}
-    try:
-        layers = list(source_stage.GetLayerStack())
-    except Exception:
-        return {}
+    layers = list(source_stage.GetLayerStack())
 
     anchors: dict[tuple[str, str], set[str]] = {}
     for layer in layers:
         for path in _iter_property_paths(layer):
             spec = layer.GetAttributeAtPath(path)
-            if spec is None or "asset" not in str(getattr(spec, "typeName", "")):
+            if spec is None or "asset" not in str(spec.typeName):
                 continue
             for asset in _iter_asset_values(layer, path, spec):
                 authored = _asset_path(asset)
@@ -156,25 +147,13 @@ def _build_source_anchor_map(source_stage: Any) -> dict[tuple[str, str], set[str
 
 
 def _get_colorspace(spec: Any) -> str:
-    has_info = getattr(spec, "HasInfo", None)
-    get_info = getattr(spec, "GetInfo", None)
-    if callable(has_info) and callable(get_info) and has_info("colorSpace"):
-        return str(get_info("colorSpace") or "")
+    if spec.HasInfo("colorSpace"):
+        return str(spec.GetInfo("colorSpace") or "")
 
-    path = getattr(spec, "path", None)
-    layer = getattr(spec, "layer", None)
-    if path is None or layer is None:
-        return ""
-    get_prim_path = getattr(path, "GetPrimPath", None)
-    if not callable(get_prim_path):
-        return ""
-    prim_path = get_prim_path()
-    append_property = getattr(prim_path, "AppendProperty", None)
-    if not callable(append_property):
-        return ""
+    prim_path = spec.path.GetPrimPath()
     for name in COLORSPACE_ATTRS:
-        colorspace_spec = layer.GetAttributeAtPath(append_property(name))
-        if colorspace_spec is not None and getattr(colorspace_spec, "default", None):
+        colorspace_spec = spec.layer.GetAttributeAtPath(prim_path.AppendProperty(name))
+        if colorspace_spec is not None and colorspace_spec.default:
             return str(colorspace_spec.default)
     return ""
 
@@ -221,7 +200,7 @@ def plan_look_resources(
 
     for path in _iter_property_paths(layer):
         spec = layer.GetAttributeAtPath(path)
-        if spec is None or "asset" not in str(getattr(spec, "typeName", "")):
+        if spec is None or "asset" not in str(spec.typeName):
             continue
         attribute_path = _path_string(path)
         colorspace = _get_colorspace(spec)

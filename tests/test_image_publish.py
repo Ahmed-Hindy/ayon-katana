@@ -97,8 +97,13 @@ class FakeCreatorBase:
     """Minimal inherited Katana creator behavior."""
 
     def create(self, _product_name, instance_data, _pre_create_data):
-        """Return the prepared instance around the fake ImageWrite node."""
-        return FakeCreatedInstance(instance_data, self.image_write_node)
+        """Model canonical persistence performed by ``KatanaCreator.create``."""
+        from ayon_katana.api import instances
+
+        created = FakeCreatedInstance(instance_data, self.image_write_node)
+        created["instance_node"] = self.image_write_node.getName()
+        instances.imprint(self.image_write_node, created.data_to_store())
+        return created
 
     def _remove_instance_from_context(self, instance) -> None:
         """Record creator-context cleanup."""
@@ -266,6 +271,92 @@ def _load_creator(monkeypatch, selected_nodes):
     return module, imprinted
 
 
+def test_creator_context_lookup_errors_propagate(monkeypatch) -> None:
+    """AYON context failures must not silently become default image frames."""
+    module, _imprinted = _load_creator(monkeypatch, [])
+    creator = object.__new__(module.CreateImage)
+
+    def fail():
+        raise RuntimeError("context lookup failed")
+
+    creator.create_context = types.SimpleNamespace(get_current_folder_entity=fail)
+    with pytest.raises(RuntimeError, match="context lookup failed"):
+        creator._current_frame_range()
+
+
+def test_creator_rolls_back_and_preserves_native_configuration_error(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """Failed native configuration rolls back without changing the error type."""
+    module, _imprinted = _load_creator(monkeypatch, [])
+    creator = object.__new__(module.CreateImage)
+    creator.image_write_node = FakeImageWriteNode()
+    creator.create_context = types.SimpleNamespace(
+        get_current_folder_entity=lambda: {
+            "attrib": {"frameStart": 1001, "frameEnd": 1010}
+        },
+        host=types.SimpleNamespace(
+            get_current_workfile=lambda: str(tmp_path / "scene.katana")
+        ),
+    )
+
+    def fail(*_args, **_kwargs):
+        raise RuntimeError("native image configuration failure")
+
+    monkeypatch.setattr(module, "configure_image_write", fail)
+    with pytest.raises(
+        RuntimeError, match="native image configuration failure"
+    ) as exc_info:
+        creator.create(
+            "imageMain",
+            {"families": []},
+            {
+                "use_selection": False,
+                "output_path": str(tmp_path / "imageMain.####.exr"),
+                "extension": "exr",
+            },
+        )
+    assert str(exc_info.value) == "native image configuration failure"
+    assert creator.image_write_node.deleted
+    assert creator.removed_instance is not None
+
+
+def test_creator_translates_invalid_image_settings_to_creator_error(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """Known invalid creator settings stay an expected AYON creator failure."""
+    module, _imprinted = _load_creator(monkeypatch, [])
+    creator = object.__new__(module.CreateImage)
+    creator.image_write_node = FakeImageWriteNode()
+    creator.create_context = types.SimpleNamespace(
+        get_current_folder_entity=lambda: {
+            "attrib": {"frameStart": 1001, "frameEnd": 1010}
+        },
+        host=types.SimpleNamespace(
+            get_current_workfile=lambda: str(tmp_path / "scene.katana")
+        ),
+    )
+
+    def fail(*_args, **_kwargs):
+        raise ValueError("invalid image setting")
+
+    monkeypatch.setattr(module, "configure_image_write", fail)
+    with pytest.raises(FakeCreatorError, match="Failed to create ImageWrite"):
+        creator.create(
+            "imageMain",
+            {"families": []},
+            {
+                "use_selection": False,
+                "output_path": str(tmp_path / "imageMain.####.exr"),
+                "extension": "exr",
+            },
+        )
+    assert creator.image_write_node.deleted
+    assert creator.removed_instance is not None
+
+
 def test_creator_connects_image_source_and_persists_farm_contract(
     monkeypatch,
     tmp_path: Path,
@@ -310,7 +401,6 @@ def test_creator_connects_image_source_and_persists_farm_contract(
 
     assert creator.image_write_node.input_port in source.output_port.connected
     assert created["instance_node"] == "imageMain"
-    assert "image_write_node" not in created
     assert "render_node" not in created
     assert created["farm"] is True
     assert created["families"] == ["image", "katana.image", "render.farm"]
@@ -458,29 +548,20 @@ def test_collect_and_validate_image_builds_local_and_farm_metadata(
     assert instance.data["colorspace"] == "sRGB"
 
 
-def test_collector_uses_canonical_name_despite_stale_legacy_alias(monkeypatch) -> None:
-    """Collection uses the creator's canonical name instead of obsolete aliases."""
+def test_validator_propagates_native_settings_reader_errors(monkeypatch) -> None:
+    """Programming/native API failures are not relabeled as artist validation."""
     node = FakeImageWriteNode()
-    node.name = "comp1"
     FakePort().connect(node.input_port)
-    collector, validator = _load_publish_modules(monkeypatch, node)
-    instance = types.SimpleNamespace(
-        data={
-            "image_write_node": "imageRequestedName",
-            "instance_node": "comp1",
-            "render_node": "imageRequestedName",
-            "transientData": {"node": node},
-            "creator_attributes": {"render_target": "farm", "review": False},
-            "families": ["image", "katana.image"],
-        }
-    )
+    _collector, validator = _load_publish_modules(monkeypatch, node)
 
-    collector.CollectImage().process(instance)
-    validator.ValidateImage().process(instance)
+    def fail(_node):
+        raise RuntimeError("native ImageWrite read failure")
 
-    assert instance.data["image_write_node"] == "imageRequestedName"
-    assert instance.data["instance_node"] == "comp1"
-    assert instance.data["render_node"] == "comp1"
+    monkeypatch.setattr(validator, "read_image_write_settings", fail)
+    instance = types.SimpleNamespace(data={"instance_node": node.getName()})
+
+    with pytest.raises(RuntimeError, match="native ImageWrite read failure"):
+        validator.ValidateImage().process(instance)
 
 
 def test_collector_preserves_existing_frame_image_target(monkeypatch) -> None:

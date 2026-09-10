@@ -455,13 +455,13 @@ def test_native_loader_failure_removes_incomplete_container(
 
     def create_node(node_type, parent_node):
         if node_type == source_node_type:
-            raise RuntimeError("source creation failed")
+            raise ValueError("source creation failed")
         return original_create_node(node_type, parent_node)
 
     monkeypatch.setattr(environment.graph, "CreateNode", create_node)
     loader = getattr(getattr(environment, loader_attribute), loader_name)()
 
-    with pytest.raises(RuntimeError, match="Failed to load"):
+    with pytest.raises(ValueError, match="source creation failed"):
         loader.load(_context(tmp_path / "asset.usd", "representation-v001"))
 
     assert environment.graph.root.getChildren() == []
@@ -494,7 +494,7 @@ def test_container_metadata_failure_leaves_no_loader_container(
     )
     loader = getattr(getattr(environment, loader_attribute), loader_name)()
 
-    with pytest.raises(RuntimeError, match="Failed to load"):
+    with pytest.raises(RuntimeError, match="metadata failure"):
         loader.load(_context(tmp_path / "asset.usd", "representation-v001"))
 
     assert environment.graph.root.getChildren() == []
@@ -584,7 +584,7 @@ def test_native_loader_update_rolls_back_path_and_metadata(
         nonlocal failed_once
         if node is container_node and not failed_once:
             failed_once = True
-            raise RuntimeError("metadata write failed")
+            raise ValueError("metadata write failed")
         original_writer(node, parameter_path, data)
 
     monkeypatch.setattr(
@@ -594,7 +594,7 @@ def test_native_loader_update_rolls_back_path_and_metadata(
     )
     update_context = _context(tmp_path / "asset_v002.usd", "representation-v002")
 
-    with pytest.raises(RuntimeError, match="Failed to update"):
+    with pytest.raises(ValueError, match="metadata write failed"):
         loader.update(
             environment.containers.parse_container(container_node),
             update_context,
@@ -745,7 +745,7 @@ def test_image_loader_update_rolls_back_colorspace_and_path(
         nonlocal failed_once
         if node is container_node and not failed_once:
             failed_once = True
-            raise RuntimeError("metadata write failed")
+            raise ValueError("metadata write failed")
         original_writer(node, parameter_path, data)
 
     monkeypatch.setattr(
@@ -761,7 +761,7 @@ def test_image_loader_update_rolls_back_colorspace_and_path(
         }
     )
 
-    with pytest.raises(RuntimeError, match="Failed to update image"):
+    with pytest.raises(ValueError, match="metadata write failed"):
         loader.update(container, update)
 
     assert source_node.getParameter("file").getValue(0.0).endswith("plate.####.exr")
@@ -909,6 +909,32 @@ def _make_import_loader(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     return environment, loader, container_node, paths
 
 
+def test_katana_load_failure_removes_incomplete_container(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed initial graph import rolls back and preserves its exception."""
+    graph_holder = {}
+
+    def import_graph(filepath, parent_node, float_nodes):
+        return _graph_importer(graph_holder["graph"])(
+            filepath,
+            parent_node,
+            float_nodes,
+        )
+
+    environment = _load_loader_modules(monkeypatch, import_graph)
+    graph_holder["graph"] = environment.graph
+    filepath = tmp_path / "raises.katana"
+    filepath.write_text("broken Katana graph", encoding="utf-8")
+    loader = environment.katana.KatanaImportLoader()
+
+    with pytest.raises(ValueError, match="broken Katana file"):
+        loader.load(_context(filepath, "representation-broken"))
+
+    assert environment.graph.root.getChildren() == []
+
+
 def test_katana_update_stages_then_replaces_managed_graph(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -985,7 +1011,7 @@ def test_katana_update_failed_import_preserves_existing_graph_and_metadata(
     user_node = environment.graph.CreateNode("Group", user_group)
     user_node.setName("ArtistAdjustment")
 
-    with pytest.raises(RuntimeError, match="Failed to prepare Katana graph update"):
+    with pytest.raises(ValueError, match="broken Katana file"):
         loader.update(
             before,
             _context(paths["raises"], "representation-raises"),
@@ -1025,6 +1051,129 @@ def test_katana_update_invalid_graph_preserves_existing_graph_and_metadata(
     assert environment.containers.get_managed_group(container_node) is old_managed_group
     assert not old_managed_group.deleted
     assert after["representation"] == before["representation"]
+
+
+def test_managed_group_validation_preserves_error_when_cleanup_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cleanup failure must not mask an invalid container-state error."""
+    environment, _loader, container_node, _paths = _make_import_loader(
+        tmp_path,
+        monkeypatch,
+    )
+    user_group = environment.containers.get_user_group(container_node)
+    assert user_group is not None
+    user_group.delete()
+
+    replacement_group = environment.containers.create_managed_group(
+        container_node,
+        name="AYON_MANAGED_PENDING",
+        role=None,
+    )
+
+    def fail_delete():
+        raise RuntimeError("cleanup failed")
+
+    monkeypatch.setattr(replacement_group, "delete", fail_delete)
+
+    with pytest.raises(RuntimeError, match="missing its managed/user groups"):
+        environment.containers.replace_managed_group(
+            container_node,
+            replacement_group,
+            {"representation": "representation-updated"},
+        )
+
+
+def test_katana_update_metadata_failure_restores_existing_graph_and_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A metadata write failure restores the previous graph and container state."""
+    environment, loader, container_node, paths = _make_import_loader(
+        tmp_path,
+        monkeypatch,
+    )
+    old_managed_group = environment.containers.get_managed_group(container_node)
+    user_group = environment.containers.get_user_group(container_node)
+    before = environment.containers.parse_container(container_node)
+    assert old_managed_group is not None
+    assert user_group is not None
+    assert before is not None
+
+    original_update_container = environment.containers.update_container
+
+    def fail_after_metadata_write(node, data):
+        original_update_container(node, data)
+        if data.get("representation") == "representation-updated":
+            raise ValueError("metadata write failed")
+
+    monkeypatch.setattr(
+        environment.katana.containers,
+        "update_container",
+        fail_after_metadata_write,
+    )
+
+    with pytest.raises(ValueError, match="metadata write failed"):
+        loader.update(
+            before,
+            _context(paths["updated"], "representation-updated"),
+        )
+
+    after = environment.containers.parse_container(container_node)
+    assert after is not None
+    assert environment.containers.get_managed_group(container_node) is old_managed_group
+    assert not old_managed_group.deleted
+    assert after["representation"] == before["representation"]
+    assert user_group.getInputPort("in").getConnectedPorts() == [
+        old_managed_group.getOutputPort("out")
+    ]
+    assert old_managed_group.getName() == environment.containers.MANAGED_GROUP_NAME
+    assert not any(
+        child.getName() == environment.katana._TEMP_MANAGED_GROUP_NAME
+        for child in container_node.getChildren()
+    )
+
+
+def test_katana_update_old_group_delete_failure_keeps_replacement_active(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Post-commit cleanup failure must not invalidate a successful update."""
+    environment, loader, container_node, paths = _make_import_loader(
+        tmp_path,
+        monkeypatch,
+    )
+    old_managed_group = environment.containers.get_managed_group(container_node)
+    user_group = environment.containers.get_user_group(container_node)
+    before = environment.containers.parse_container(container_node)
+    assert old_managed_group is not None
+    assert user_group is not None
+    assert before is not None
+
+    def fail_delete():
+        raise RuntimeError("old group delete failed")
+
+    monkeypatch.setattr(old_managed_group, "delete", fail_delete)
+
+    imported_nodes = loader.update(
+        before,
+        _context(paths["updated"], "representation-updated"),
+    )
+
+    new_managed_group = environment.containers.get_managed_group(container_node)
+    after = environment.containers.parse_container(container_node)
+    assert new_managed_group is not None
+    assert new_managed_group is not old_managed_group
+    assert old_managed_group in container_node.getChildren()
+    assert user_group.getInputPort("in").getConnectedPorts() == [
+        new_managed_group.getOutputPort("out")
+    ]
+    assert after is not None
+    assert after["representation"] == "representation-updated"
+    assert imported_nodes[0].getName() == "Imported_updated"
+    assert "Could not delete the previous managed group" in caplog.text
 
 
 def test_katana_import_loader_switch_and_remove_still_work(

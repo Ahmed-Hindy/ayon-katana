@@ -164,8 +164,9 @@ def test_base_creator_unregisters_instance_when_imprinting_fails(
     creator.node_type = "Group"
     creator.context_instances = []
 
-    with pytest.raises(RuntimeError, match="Creator error"):
+    with pytest.raises(RuntimeError, match="imprint failed") as exc_info:
         creator.create("testMain", {"productType": "test"}, {})
+    assert str(exc_info.value) == "imprint failed"
 
     assert creator.context_instances == []
     assert graph.root.children == []

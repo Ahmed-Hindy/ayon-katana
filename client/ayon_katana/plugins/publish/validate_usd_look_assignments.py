@@ -32,7 +32,7 @@ class ValidateUsdLookAssignments(
         try:
             stage = get_composed_source_stage(instance.data)
             invalid_paths = collect_unbound_geometry_paths(stage)
-        except Exception as exc:
+        except (ValueError, RuntimeError) as exc:
             raise PublishValidationError(
                 f"Failed to inspect the composed USD look stage: {exc}",
                 title="USD look stage inspection failed",

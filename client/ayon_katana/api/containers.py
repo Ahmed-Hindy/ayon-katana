@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from contextlib import suppress
 from typing import Any, Optional
 
@@ -10,15 +11,19 @@ from Katana import NodegraphAPI
 
 from . import lib
 
+log = logging.getLogger(__name__)
+
 _CONTAINER_PARAMETER = "user.ayon.container.data"
 _CONTAINER_SCHEMA = "ayon:container-3.0"
 _NODE_ROLE_PARAMETER = "user.ayon.managed.role"
 _MANAGED_ROLE = "managed"
+_INACTIVE_ROLE = "inactive"
 _USER_ROLE = "user"
 
 MANAGED_GROUP_NAME = "AYON_MANAGED"
 USER_GROUP_NAME = "USER"
 SOURCE_ROLE = "source"
+_OLD_MANAGED_GROUP_NAME = "AYON_MANAGED_OLD"
 
 
 def imprint(node, data: dict[str, Any]) -> None:
@@ -230,6 +235,70 @@ def update_container(container_node, data: dict[str, Any]) -> None:
     current_data.pop("objectName", None)
     current_data.update(data)
     imprint(container_node, current_data)
+
+
+def replace_managed_group(
+    container_node,
+    replacement_group,
+    data: dict[str, Any],
+) -> None:
+    """Replace the managed graph, restoring the previous state on failure."""
+    previous_group = get_managed_group(container_node)
+    user_group = get_user_group(container_node)
+    if previous_group is None or user_group is None:
+        with suppress(Exception):
+            replacement_group.delete()
+        raise RuntimeError("The AYON container is missing its managed/user groups.")
+
+    previous_data = parse_container(container_node)
+    if previous_data is None:
+        with suppress(Exception):
+            replacement_group.delete()
+        raise RuntimeError("The AYON Katana container has invalid metadata.")
+    previous_data.pop("node", None)
+    previous_data.pop("objectName", None)
+
+    previous_name = previous_group.getName()
+    replacement_name = replacement_group.getName()
+
+    def rollback() -> None:
+        """Best-effort restore without masking the original failure."""
+        with suppress(Exception):
+            disconnect_managed_group_from_user(replacement_group, user_group)
+        with suppress(Exception):
+            _set_node_role(replacement_group, _INACTIVE_ROLE)
+        with suppress(Exception):
+            replacement_group.setName(replacement_name)
+        with suppress(Exception):
+            previous_group.setName(previous_name)
+        with suppress(Exception):
+            set_managed_group_role(previous_group)
+        with suppress(Exception):
+            connect_managed_group_to_user(previous_group, user_group)
+        with suppress(Exception):
+            imprint(container_node, previous_data)
+        with suppress(Exception):
+            replacement_group.delete()
+
+    try:
+        disconnect_managed_group_from_user(previous_group, user_group)
+        connect_managed_group_to_user(replacement_group, user_group)
+        previous_group.setName(_OLD_MANAGED_GROUP_NAME)
+        _set_node_role(previous_group, _INACTIVE_ROLE)
+        replacement_group.setName(MANAGED_GROUP_NAME)
+        set_managed_group_role(replacement_group)
+        update_container(container_node, data)
+    except Exception:
+        rollback()
+        raise
+
+    try:
+        previous_group.delete()
+    except Exception:
+        log.warning(
+            "Could not delete the previous managed group after replacement.",
+            exc_info=True,
+        )
 
 
 def ls():

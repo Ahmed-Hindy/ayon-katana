@@ -147,8 +147,13 @@ class FakeCreatorBase:
     """Minimal inherited Katana creator behavior."""
 
     def create(self, _product_name, instance_data, _pre_create_data):
-        """Return the prepared instance around the configured fake node."""
-        return FakeCreatedInstance(instance_data, self.export_node)
+        """Model canonical persistence performed by ``KatanaCreator.create``."""
+        from ayon_katana.api import instances
+
+        created = FakeCreatedInstance(instance_data, self.export_node)
+        created["instance_node"] = self.export_node.getName()
+        instances.imprint(self.export_node, created.data_to_store())
+        return created
 
     def _remove_instance_from_context(self, instance) -> None:
         """Record creator-context cleanup."""
@@ -436,6 +441,66 @@ def _load_creator(monkeypatch, selected_nodes):
     return module, imprinted
 
 
+def test_creator_context_lookup_errors_propagate(monkeypatch) -> None:
+    """AYON context failures must not silently become default USD frames."""
+    module, _imprinted = _load_creator(monkeypatch, [])
+    creator = object.__new__(module.CreateUsdLayer)
+
+    def fail():
+        raise RuntimeError("context lookup failed")
+
+    creator.create_context = types.SimpleNamespace(get_current_folder_entity=fail)
+    with pytest.raises(RuntimeError, match="context lookup failed"):
+        creator._current_frame_range()
+
+
+def test_creator_rolls_back_and_preserves_native_configuration_error(
+    monkeypatch,
+) -> None:
+    """Failed native configuration rolls back without changing the error type."""
+    module, _imprinted = _load_creator(monkeypatch, [])
+    creator = object.__new__(module.CreateUsdLayer)
+    creator.export_node = FakeUsdExportNode()
+    creator.create_context = types.SimpleNamespace(
+        get_current_folder_entity=lambda: {
+            "attrib": {"frameStart": 1001, "frameEnd": 1010}
+        }
+    )
+
+    def fail(*_args, **_kwargs):
+        raise RuntimeError("native USD configuration failure")
+
+    monkeypatch.setattr(module, "configure_usd_layer_export", fail)
+    with pytest.raises(
+        RuntimeError, match="native USD configuration failure"
+    ) as exc_info:
+        creator.create("usdLayerMain", {"families": []}, {"use_selection": False})
+    assert str(exc_info.value) == "native USD configuration failure"
+    assert creator.export_node.deleted
+    assert creator.removed_instance is not None
+
+
+def test_creator_translates_invalid_usd_settings_to_creator_error(monkeypatch) -> None:
+    """Known invalid USD creator settings stay an expected AYON creator failure."""
+    module, _imprinted = _load_creator(monkeypatch, [])
+    creator = object.__new__(module.CreateUsdLayer)
+    creator.export_node = FakeUsdExportNode()
+    creator.create_context = types.SimpleNamespace(
+        get_current_folder_entity=lambda: {
+            "attrib": {"frameStart": 1001, "frameEnd": 1010}
+        }
+    )
+
+    def fail(*_args, **_kwargs):
+        raise ValueError("invalid USD setting")
+
+    monkeypatch.setattr(module, "configure_usd_layer_export", fail)
+    with pytest.raises(FakeCreatorError, match="Katana USD layer creator failed"):
+        creator.create("usdLayerMain", {"families": []}, {"use_selection": False})
+    assert creator.export_node.deleted
+    assert creator.removed_instance is not None
+
+
 def test_creator_connects_selected_output_and_persists_native_node(monkeypatch) -> None:
     """Creator wires one selected source directly into ``UsdLayerExport``."""
 
@@ -516,11 +581,9 @@ def test_semantic_usd_creators_reuse_native_layer_contract(
     assert creator_class.default_time_samples == time_samples
 
 
-@pytest.mark.parametrize("legacy_alias", [None, "ObsoleteAlias"])
 def test_collect_validate_extract_produces_one_usd_representation(
     monkeypatch,
     tmp_path: Path,
-    legacy_alias,
 ) -> None:
     """Publish plug-ins read live settings and emit one verified USD layer."""
     usd = _load_usd_api(monkeypatch)
@@ -565,8 +628,6 @@ def test_collect_validate_extract_produces_one_usd_representation(
     instance = types.SimpleNamespace(
         data={"instance_node": node.getName(), "productName": "usdLayerMain"}
     )
-    if legacy_alias is not None:
-        instance.data["usd_export_node"] = legacy_alias
 
     collector_module.CollectUsdLayer().process(instance)
     validator_module.ValidateUsdLayer().process(instance)
@@ -604,6 +665,29 @@ def test_missing_export_node_is_reported_during_validation(monkeypatch) -> None:
     with pytest.raises(FakeValidationError, match="does not exist") as caught:
         validator.ValidateUsdLayer().process(instance)
     assert caught.value.title == "USD export node missing"
+
+
+def test_validator_propagates_native_settings_reader_errors(monkeypatch) -> None:
+    """Programming/native API failures are not relabeled as artist validation."""
+    usd = _load_usd_api(monkeypatch)
+    node = FakeUsdExportNode()
+    FakeSourceNode().output_port.connect(node.input_port)
+    _install_publish_runtime(monkeypatch, {node.getName(): node}, usd)
+    validator = _load_module(
+        monkeypatch,
+        "usd_settings_error_validator",
+        ROOT / "client/ayon_katana/plugins/publish/validate_usd_layer.py",
+    )
+    monkeypatch.setattr(validator, "is_native_usd_node", lambda _node: True)
+
+    def fail(_node):
+        raise RuntimeError("native USD read failure")
+
+    monkeypatch.setattr(validator, "read_usd_layer_export_settings", fail)
+    instance = types.SimpleNamespace(data={"instance_node": node.getName()})
+
+    with pytest.raises(RuntimeError, match="native USD read failure"):
+        validator.ValidateUsdLayer().process(instance)
 
 
 def test_validator_rejects_disconnected_native_export(monkeypatch) -> None:

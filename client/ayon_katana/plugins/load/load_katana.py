@@ -98,59 +98,54 @@ class KatanaImportLoader(plugin.KatanaLoader):
 
     def load(self, context, name=None, namespace=None, options=None):
         """Import a Katana representation and return its container node."""
+        filepath = self._representation_path(context)
         product_name = name or context["product"]["name"]
         namespace = namespace or context["folder"]["name"]
-        container_node = containers.containerise(
-            name=product_name,
-            namespace=namespace,
-            context=context,
-            loader=self.__class__.__name__,
-        )
-        managed_group = containers.get_managed_group(container_node)
-        if managed_group is None:
-            raise RuntimeError("Failed to create the AYON managed group.")
-        imported_nodes = self._import_graph(
-            managed_group,
-            self.filepath_from_context(context),
-        )
-        self[:] = [container_node, *imported_nodes]
-        return container_node
+        container_node = None
+        try:
+            container_node = containers.containerise(
+                name=product_name,
+                namespace=namespace,
+                context=context,
+                loader=self.__class__.__name__,
+            )
+            managed_group = containers.get_managed_group(container_node)
+            if managed_group is None:
+                raise RuntimeError("Failed to create the AYON managed group.")
+            imported_nodes = self._import_graph(managed_group, filepath)
+            self[:] = [container_node, *imported_nodes]
+            return container_node
+        except Exception:
+            if container_node is not None:
+                with suppress(Exception):
+                    container_node.delete()
+            raise
 
     def update(self, container, context):
         """Replace a container's managed graph with a new representation."""
         container_node = container["node"]
-        managed_group = containers.get_managed_group(container_node)
         user_group = containers.get_user_group(container_node)
-        if managed_group is None or user_group is None:
+        if containers.get_managed_group(container_node) is None or user_group is None:
             raise RuntimeError("The AYON container is missing its managed/user groups.")
 
         filepath = self._representation_path(context)
-        temporary_group = None
+        temporary_group = containers.create_managed_group(
+            container_node,
+            name=_TEMP_MANAGED_GROUP_NAME,
+            role=None,
+        )
         try:
-            temporary_group = containers.create_managed_group(
-                container_node,
-                name=_TEMP_MANAGED_GROUP_NAME,
-                role=None,
-            )
             imported_nodes = self._import_graph(temporary_group, filepath)
             self._validate_update_candidate(temporary_group, user_group)
-        except Exception as exc:
-            if temporary_group is not None:
-                with suppress(Exception):
-                    temporary_group.delete()
-            raise RuntimeError(
-                f"Failed to prepare Katana graph update from {filepath!r}: {exc}"
-            ) from exc
-
-        containers.disconnect_managed_group_from_user(managed_group, user_group)
-        containers.connect_managed_group_to_user(temporary_group, user_group)
-        containers.set_managed_group_role(temporary_group)
-        managed_group.delete()
-        temporary_group.setName(containers.MANAGED_GROUP_NAME)
+        except Exception:
+            with suppress(Exception):
+                temporary_group.delete()
+            raise
 
         project = context.get("project") or {}
-        containers.update_container(
+        containers.replace_managed_group(
             container_node,
+            temporary_group,
             {
                 "representation": context["representation"]["id"],
                 "project_name": project.get("name"),

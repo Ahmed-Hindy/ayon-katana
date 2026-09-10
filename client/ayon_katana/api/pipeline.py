@@ -49,6 +49,11 @@ class KatanaHost(HostBase, IWorkfileHost, ILoadHost, IPublishHost):
         self._deadline_plugins_registered = False
         self._has_been_setup = False
 
+    @property
+    def is_installed(self) -> bool:
+        """Return whether the Katana host services are currently installed."""
+        return self._has_been_setup
+
     def get_app_information(self):
         """Return the running Katana application's name and version."""
         import Katana

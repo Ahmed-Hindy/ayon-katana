@@ -99,6 +99,18 @@ def test_registered_renderers_exclude_internal_plugins(monkeypatch) -> None:
     ]
 
 
+def test_renderer_registry_errors_propagate(monkeypatch) -> None:
+    """Native registry failures must not masquerade as no installed renderers."""
+    render = _load_render_module(monkeypatch, ["prman"])
+
+    def fail():
+        raise RuntimeError("renderer registry failure")
+
+    render.RenderingAPI.RenderPlugins.GetRendererPluginNames = fail
+    with pytest.raises(RuntimeError, match="renderer registry failure"):
+        render.get_registered_renderers()
+
+
 def test_default_renderer_uses_settings_then_environment(monkeypatch) -> None:
     """Project settings should override DEFAULT_RENDERER when both are valid."""
     render = _load_render_module(monkeypatch, ["prman", "dl"])

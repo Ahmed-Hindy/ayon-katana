@@ -23,9 +23,11 @@ class KatanaPlaceholderCreatePlugin(
 
     def get_placeholder_node_name(self, placeholder_data):
         """Return a stable node name derived from the configured creator."""
-        creator_name = placeholder_data.get("creator") or "creator"
+        creator_name = placeholder_data["creator"]
         creator = self.builder.get_creators_by_name().get(creator_name)
-        product_type = getattr(creator, "product_base_type", creator_name)
+        if creator is None:
+            raise RuntimeError(f"Unknown AYON creator: {creator_name!r}.")
+        product_type = creator.product_base_type
         return lib.sanitize_node_name(
             f"AYON_PLACEHOLDER_CREATE_{product_type}",
             "AYON_PLACEHOLDER_CREATE",

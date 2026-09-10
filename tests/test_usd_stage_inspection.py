@@ -75,6 +75,27 @@ def test_get_composed_usd_stage_returns_host_owned_stage(monkeypatch) -> None:
     assert usd.get_composed_usd_stage(FakeNode()) is stage
 
 
+def test_get_composed_usd_stage_propagates_native_host_errors(monkeypatch) -> None:
+    """Unexpected Katana stage API failures retain their native exception type."""
+    usd = _load_usd_api(monkeypatch, stage_handle=FakeStageHandle(object()))
+    katana = sys.modules["Katana"]
+
+    def fail_get_stage(_node):
+        raise LookupError("native stage lookup failed")
+
+    katana.NodesUsdAPI.GetStage = fail_get_stage
+    with pytest.raises(LookupError, match="native stage lookup failed"):
+        usd.get_composed_usd_stage(FakeNode())
+
+    class BrokenStageHandle:
+        def getUsdStage(self):
+            raise ArithmeticError("native stage composition failed")
+
+    katana.NodesUsdAPI.GetStage = lambda _node: BrokenStageHandle()
+    with pytest.raises(ArithmeticError, match="native stage composition failed"):
+        usd.get_composed_usd_stage(FakeNode())
+
+
 def test_get_composed_usd_stage_rejects_missing_or_non_native_node(monkeypatch) -> None:
     """Invalid sources fail before attempting host stage composition."""
     usd = _load_usd_api(monkeypatch, stage_handle=FakeStageHandle(object()))

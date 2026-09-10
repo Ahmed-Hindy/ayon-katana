@@ -328,6 +328,20 @@ def test_validator_rejects_missing_wrong_and_outputless_sources(
         validator.ValidateNodegraph().process(instance)
 
 
+def test_validator_does_not_coerce_node_identifiers(monkeypatch) -> None:
+    """Malformed persisted identifiers cannot impersonate valid node names."""
+    source = FakeNode("PublishedGroup")
+    validator = _load_validator(monkeypatch, {source.getName(): source})
+
+    class StringLikeIdentifier:
+        def __str__(self) -> str:
+            return source.getName()
+
+    instance = types.SimpleNamespace(data={"nodegraph_node": StringLikeIdentifier()})
+    with pytest.raises(FakePublishValidationError, match="no longer exists"):
+        validator.ValidateNodegraph().process(instance)
+
+
 def test_validator_rejects_outer_container_and_recursive_instance(monkeypatch) -> None:
     """A source cannot be a container or contain its own publish instance."""
     outer_container = FakeNode("assetMain_CON")

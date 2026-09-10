@@ -21,7 +21,7 @@ class ExtractNodegraph(plugin.KatanaExtractorPlugin):
     def process(self, instance) -> None:
         """Stage one selected Group without saving the active workfile."""
         source_name = instance.data.get("nodegraph_node")
-        source_node = compat.get_node(str(source_name)) if source_name else None
+        source_node = compat.get_node(source_name) if source_name else None
         if source_node is None:
             raise PublishError(
                 f"Katana node graph source does not exist: {source_name!r}"

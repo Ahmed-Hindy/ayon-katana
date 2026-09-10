@@ -256,7 +256,7 @@ class LifecycleController:
             return
 
         def _install_if_active():
-            if not self._host._has_been_setup:
+            if not self._host.is_installed:
                 return
             try:
                 _install_menu()
@@ -315,7 +315,7 @@ class LifecycleController:
             return False
 
         def _invoke():
-            if self._host._has_been_setup:
+            if self._host.is_installed:
                 callback(main_window)
 
         _defer_call(_invoke)

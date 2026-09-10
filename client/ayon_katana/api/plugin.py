@@ -113,14 +113,14 @@ class KatanaCreator(Creator, KatanaCreatorBase):
             self._add_instance_to_context(created_instance)
             instances.imprint(instance_node, created_instance.data_to_store())
             return created_instance
-        except Exception as exc:
+        except Exception:
             if created_instance is not None:
                 with suppress(Exception):
                     self._remove_instance_from_context(created_instance)
             if instance_node is not None:
                 with suppress(Exception):
                     instance_node.delete()
-            raise CreatorError(f"Creator error: {exc}") from exc
+            raise
 
     def collect_instances(self):
         """Collect persisted node-backed instances into the create context."""

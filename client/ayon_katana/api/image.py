@@ -38,9 +38,8 @@ def _get_parameter(node: Any, name: str) -> Any:
     """
     parameter = node.getParameter(name)
     if parameter is None:
-        node_name = getattr(node, "getName", lambda: "<unknown>")()
         raise RuntimeError(
-            f"Katana node {node_name!r} has no required parameter {name!r}."
+            f"Katana node {node.getName()!r} has no required parameter {name!r}."
         )
     return parameter
 

@@ -268,6 +268,20 @@ def test_context_settings_updates_range_without_simulating_fps(monkeypatch, capl
     assert "no authoritative project FPS setter" in caplog.text
 
 
+def test_context_task_lookup_errors_do_not_break_lifecycle(monkeypatch, caplog) -> None:
+    """AYON task lookup failures leave Katana timing unchanged and are logged."""
+    module = _load_context_module(monkeypatch, FakeNodegraph())
+
+    def fail():
+        raise RuntimeError("task lookup failed")
+
+    monkeypatch.setattr(module, "_get_current_task_entity", fail)
+    assert module.apply_current_frame_range() is False
+    result = module.apply_context_settings(FakeContextHost())
+    assert result["project_name"] == "TestProject"
+    assert "task lookup failed" in caplog.text
+
+
 def test_context_updates_node_and_workfile_instance_metadata(monkeypatch):
     """Cross-context updates persist only existing AYON instance metadata."""
     module = _load_context_module(monkeypatch, FakeNodegraph())
@@ -389,6 +403,11 @@ class FakeLifecycleHost:
             "folder_path": "/assets/hero",
             "task_name": "layout",
         }
+
+    @property
+    def is_installed(self) -> bool:
+        """Mirror the public Katana host installation-state contract."""
+        return self._has_been_setup
 
 
 def _load_lifecycle_module(monkeypatch):

@@ -13,6 +13,19 @@ import pytest
 ROOT = Path(__file__).parents[1]
 
 
+class FakePrimPath:
+    """Minimal Sdf prim path."""
+
+    def __init__(self, value: str) -> None:
+        self.pathString = value
+
+    def AppendProperty(self, name: str):
+        return FakePropertyPath(f"{self.pathString}.{name}")
+
+    def __str__(self) -> str:
+        return self.pathString
+
+
 class FakePropertyPath:
     """Minimal Sdf property path."""
 
@@ -21,6 +34,9 @@ class FakePropertyPath:
 
     def IsPropertyPath(self) -> bool:
         return True
+
+    def GetPrimPath(self) -> FakePrimPath:
+        return FakePrimPath(self.pathString.rsplit(".", 1)[0])
 
     def __str__(self) -> str:
         return self.pathString
@@ -66,6 +82,7 @@ class FakeLayer:
     def __init__(self, identifier: Path) -> None:
         self.identifier = str(identifier)
         self.realPath = str(identifier)
+        self.resolvedPath = str(identifier)
         self.specs = {}
         self.samples = {}
 

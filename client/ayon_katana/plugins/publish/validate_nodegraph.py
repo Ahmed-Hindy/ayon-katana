@@ -31,7 +31,7 @@ class ValidateNodegraph(
                 "Node graph instance has no selected Group identifier.",
                 title="Node graph source missing",
             )
-        source_node = compat.get_node(str(source_name))
+        source_node = compat.get_node(source_name)
         if source_node is None:
             raise PublishValidationError(
                 f"Node graph source no longer exists: {source_name}",
@@ -49,7 +49,7 @@ class ValidateNodegraph(
             )
 
         instance_name = instance.data.get("instance_node")
-        instance_node = compat.get_node(str(instance_name)) if instance_name else None
+        instance_node = compat.get_node(instance_name) if instance_name else None
         if instance_node is not None and (
             source_node is instance_node
             or compat.is_descendant(instance_node, source_node)

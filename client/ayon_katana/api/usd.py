@@ -61,48 +61,26 @@ def get_composed_usd_stage(source_node: Any) -> Any:
 
     Raises:
         ValueError: The source node is missing or is not a native USD node.
-        RuntimeError: Katana cannot provide a valid composed USD stage.
+        RuntimeError: Katana returns no valid stage handle or composed stage.
+        Exception: Unexpected native Katana USD API failures propagate unchanged.
     """
     if source_node is None:
         raise ValueError("A native USD source node is required.")
 
-    try:
-        node_name = source_node.getName()
-        node_type = source_node.getType()
-    except (AttributeError, TypeError) as exc:
-        raise ValueError(
-            "USD stage inspection requires a Katana node exposing getName() "
-            "and getType()."
-        ) from exc
-
-    try:
-        native_usd = is_native_usd_node(source_node)
-    except Exception as exc:
-        raise RuntimeError(
-            f"Failed to inspect the USD node flavor for {node_name!r}."
-        ) from exc
-    if not native_usd:
+    node_name = source_node.getName()
+    node_type = source_node.getType()
+    if not is_native_usd_node(source_node):
         raise ValueError(
             f"Katana node {node_name!r} ({node_type}) is not a native USD node."
         )
 
-    try:
-        from Katana import NodesUsdAPI
+    from Katana import NodesUsdAPI
 
-        stage_handle = NodesUsdAPI.GetStage(source_node)
-    except Exception as exc:
-        raise RuntimeError(
-            f"Katana could not create a USD stage handle for {node_name!r}."
-        ) from exc
+    stage_handle = NodesUsdAPI.GetStage(source_node)
     if stage_handle is None:
         raise RuntimeError(f"Katana returned no USD stage handle for {node_name!r}.")
 
-    try:
-        stage = stage_handle.getUsdStage()
-    except Exception as exc:
-        raise RuntimeError(
-            f"Katana could not compose the USD stage for {node_name!r}."
-        ) from exc
+    stage = stage_handle.getUsdStage()
     if stage is None:
         raise RuntimeError(f"Katana returned no composed USD stage for {node_name!r}.")
     return stage
@@ -180,9 +158,8 @@ def _rehydrate_usd_layer_export(node: Any) -> None:
 def _get_parameter(node: Any, name: str) -> Any:
     parameter = node.getParameter(name)
     if parameter is None:
-        node_name = getattr(node, "getName", lambda: "<unknown>")()
         raise RuntimeError(
-            f"Katana node {node_name!r} has no required parameter {name!r}."
+            f"Katana node {node.getName()!r} has no required parameter {name!r}."
         )
     return parameter
 

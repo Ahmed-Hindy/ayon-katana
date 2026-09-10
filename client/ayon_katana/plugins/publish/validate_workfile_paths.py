@@ -104,12 +104,7 @@ class ValidateWorkfilePaths(
 
         from Katana import Utils
 
-        undo_stack = getattr(Utils, "UndoStack", None)
-        if undo_stack is None:
-            raise RuntimeError(
-                "Katana UndoStack is unavailable. No paths were changed."
-            )
-
+        undo_stack = Utils.UndoStack
         undo_stack.OpenGroup("Repair AYON workfile paths")
         try:
             for reference in repairable:
@@ -132,8 +127,7 @@ class ValidateWorkfilePaths(
         frame_step: int,
     ) -> None:
         parameter = reference.parameter
-        is_expression = getattr(parameter, "isExpression", None)
-        if callable(is_expression) and is_expression():
+        if parameter.isExpression():
             return
 
         current_value = parameter.getValue(0.0)
@@ -166,7 +160,7 @@ class ValidateWorkfilePaths(
     @staticmethod
     def _required_frame_range(instance) -> tuple[int | None, int | None, int]:
         data = instance.data
-        context_data = getattr(instance.context, "data", {})
+        context_data = instance.context.data
         frame_start = data.get("frameStart", context_data.get("frameStart"))
         frame_end = data.get("frameEnd", context_data.get("frameEnd"))
         if frame_start is None or frame_end is None:

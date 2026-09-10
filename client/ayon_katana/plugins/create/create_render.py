@@ -49,10 +49,7 @@ class CreateRender(plugin.KatanaCreator):
         return instance_node
 
     def _current_frame_range(self) -> tuple[int, int]:
-        try:
-            folder_entity = self.create_context.get_current_folder_entity()
-        except Exception:
-            folder_entity = None
+        folder_entity = self.create_context.get_current_folder_entity()
         attributes = (folder_entity or {}).get("attrib") or {}
         frame_start = attributes.get("frameStart")
         if frame_start is None:
@@ -68,14 +65,8 @@ class CreateRender(plugin.KatanaCreator):
         The creator's frame inputs are cut frames. The Render range expands
         them when handles are enabled.
         """
-        try:
-            task_entity = self.create_context.get_current_task_entity()
-        except Exception:
-            task_entity = None
-        try:
-            folder_entity = self.create_context.get_current_folder_entity()
-        except Exception:
-            folder_entity = None
+        task_entity = self.create_context.get_current_task_entity()
+        folder_entity = self.create_context.get_current_folder_entity()
         task_attributes = (task_entity or {}).get("attrib") or {}
         folder_attributes = (folder_entity or {}).get("attrib") or {}
 
@@ -208,16 +199,14 @@ class CreateRender(plugin.KatanaCreator):
                     if source_port is not None and target_port is not None:
                         source_port.connect(target_port)
             return created_instance
-        except Exception as exc:
+        except Exception:
             if instance_node is not None:
                 with suppress(Exception):
                     instance_node.delete()
             if created_instance is not None:
                 with suppress(Exception):
                     self._remove_instance_from_context(created_instance)
-            if isinstance(exc, CreatorError):
-                raise
-            raise CreatorError(f"Katana render creator failed: {exc}") from exc
+            raise
 
     def update_instances(self, update_list) -> None:
         """Update persisted render instance identity after creator edits."""
@@ -245,22 +234,14 @@ class CreateRender(plugin.KatanaCreator):
             instance_node = created_instance.transient_data.get("node")
             if instance_node is None:
                 continue
-            try:
-                created_instance["instance_node"] = instance_node.getName()
-            except Exception:
-                continue
-            try:
-                render_node = render.get_render_node(instance_node)
-            except Exception:
-                render_node = None
-            try:
-                settings_node = render.get_settings_node(instance_node)
-            except Exception:
-                settings_node = None
-            if render_node is not None:
-                created_instance["render_node"] = render_node.getName()
-            if settings_node is not None:
-                created_instance["render_settings_node"] = settings_node.getName()
+            render_node = render.get_render_node(instance_node)
+            if render_node is None:
+                raise RuntimeError("Katana render graph has no Render node.")
+            settings_node = render.get_settings_node(instance_node)
+            if settings_node is None:
+                raise RuntimeError("Katana render graph has no RenderSettings node.")
+            created_instance["render_node"] = render_node.getName()
+            created_instance["render_settings_node"] = settings_node.getName()
             instances.imprint(instance_node, created_instance.data_to_store())
 
     def _get_initial_render_attr_defs(self):

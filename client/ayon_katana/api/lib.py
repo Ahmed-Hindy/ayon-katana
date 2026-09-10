@@ -155,7 +155,7 @@ def get_color_management_preferences() -> dict[str, str]:
     """Return Katana color management preferences."""
     from . import colorspace
 
-    config_path = colorspace._get_ocio_config_path()
+    config_path = colorspace.get_ocio_config_path()
     scene_linear = colorspace.get_scene_linear_colorspace()
     if not config_path or not scene_linear:
         return {}

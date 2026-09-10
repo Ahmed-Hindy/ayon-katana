@@ -34,7 +34,7 @@ class ValidateUsdLookMaterialDefinitions(
             stage = get_composed_source_stage(instance.data)
             layer = open_extracted_look_layer(instance.data)
             invalid_materials = collect_invalid_material_definitions(layer, stage)
-        except Exception as exc:
+        except (ValueError, RuntimeError) as exc:
             raise PublishValidationError(
                 f"Failed to inspect USD look material definitions: {exc}",
                 title="USD look material inspection failed",

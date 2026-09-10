@@ -73,11 +73,11 @@ class UsdLoader(plugin.KatanaLoader):
             source_node.getOutputPort("out").connect(managed_group.getReturnPort("out"))
             self[:] = [container_node, source_node]
             return container_node
-        except Exception as exc:
+        except Exception:
             if container_node is not None:
                 with suppress(Exception):
                     container_node.delete()
-            raise RuntimeError(f"Failed to load USD representation: {exc}") from exc
+            raise
 
     def _apply_options(self, source_node, options) -> None:
         """Apply loader-specific settings to a newly created source node."""
@@ -116,12 +116,12 @@ class UsdLoader(plugin.KatanaLoader):
                     "loader": self.__class__.__name__,
                 },
             )
-        except Exception as exc:
+        except Exception:
             with suppress(Exception):
                 file_parameter.setValue(old_filepath, 0.0)
             with suppress(Exception):
                 containers.update_container(container_node, old_container_data)
-            raise RuntimeError(f"Failed to update USD representation: {exc}") from exc
+            raise
 
     def remove(self, container):
         """Remove a USD container from the Katana project."""

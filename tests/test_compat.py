@@ -7,6 +7,8 @@ import sys
 import types
 from pathlib import Path
 
+import pytest
+
 
 def _load_compat_module(root_node, monkeypatch, katana_file=None, nodes=None):
     """Load the Katana API helpers with a minimal fake host."""
@@ -90,7 +92,8 @@ def test_is_descendant_walks_parent_chain(monkeypatch) -> None:
     assert compat.is_descendant(leaf_node, parent_node)
     assert compat.is_descendant(leaf_node, root_node)
     assert not compat.is_descendant(leaf_node, outside_node)
-    assert not compat.is_descendant(object(), root_node)
+    with pytest.raises(AttributeError, match="getParent"):
+        compat.is_descendant(object(), root_node)
 
 
 def test_get_output_ports_supports_arbitrary_port_names(monkeypatch) -> None:
@@ -105,7 +108,8 @@ def test_get_output_ports_supports_arbitrary_port_names(monkeypatch) -> None:
     compat = _load_compat_module(Node(), monkeypatch)
 
     assert compat.get_output_ports(Node()) == [custom_port]
-    assert compat.get_output_ports(object()) == []
+    with pytest.raises(AttributeError, match="getOutputPorts"):
+        compat.get_output_ports(object())
 
 
 def test_import_returns_nodes_when_katana_returns_none(monkeypatch) -> None:

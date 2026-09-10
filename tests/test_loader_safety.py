@@ -455,13 +455,13 @@ def test_native_loader_failure_removes_incomplete_container(
 
     def create_node(node_type, parent_node):
         if node_type == source_node_type:
-            raise RuntimeError("source creation failed")
+            raise ValueError("source creation failed")
         return original_create_node(node_type, parent_node)
 
     monkeypatch.setattr(environment.graph, "CreateNode", create_node)
     loader = getattr(getattr(environment, loader_attribute), loader_name)()
 
-    with pytest.raises(RuntimeError, match="Failed to load"):
+    with pytest.raises(ValueError, match="source creation failed"):
         loader.load(_context(tmp_path / "asset.usd", "representation-v001"))
 
     assert environment.graph.root.getChildren() == []
@@ -494,7 +494,7 @@ def test_container_metadata_failure_leaves_no_loader_container(
     )
     loader = getattr(getattr(environment, loader_attribute), loader_name)()
 
-    with pytest.raises(RuntimeError, match="Failed to load"):
+    with pytest.raises(RuntimeError, match="metadata failure"):
         loader.load(_context(tmp_path / "asset.usd", "representation-v001"))
 
     assert environment.graph.root.getChildren() == []
@@ -584,7 +584,7 @@ def test_native_loader_update_rolls_back_path_and_metadata(
         nonlocal failed_once
         if node is container_node and not failed_once:
             failed_once = True
-            raise RuntimeError("metadata write failed")
+            raise ValueError("metadata write failed")
         original_writer(node, parameter_path, data)
 
     monkeypatch.setattr(
@@ -594,7 +594,7 @@ def test_native_loader_update_rolls_back_path_and_metadata(
     )
     update_context = _context(tmp_path / "asset_v002.usd", "representation-v002")
 
-    with pytest.raises(RuntimeError, match="Failed to update"):
+    with pytest.raises(ValueError, match="metadata write failed"):
         loader.update(
             environment.containers.parse_container(container_node),
             update_context,
@@ -745,7 +745,7 @@ def test_image_loader_update_rolls_back_colorspace_and_path(
         nonlocal failed_once
         if node is container_node and not failed_once:
             failed_once = True
-            raise RuntimeError("metadata write failed")
+            raise ValueError("metadata write failed")
         original_writer(node, parameter_path, data)
 
     monkeypatch.setattr(
@@ -761,7 +761,7 @@ def test_image_loader_update_rolls_back_colorspace_and_path(
         }
     )
 
-    with pytest.raises(RuntimeError, match="Failed to update image"):
+    with pytest.raises(ValueError, match="metadata write failed"):
         loader.update(container, update)
 
     assert source_node.getParameter("file").getValue(0.0).endswith("plate.####.exr")
@@ -909,6 +909,32 @@ def _make_import_loader(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     return environment, loader, container_node, paths
 
 
+def test_katana_load_failure_removes_incomplete_container(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed initial graph import rolls back and preserves its exception."""
+    graph_holder = {}
+
+    def import_graph(filepath, parent_node, float_nodes):
+        return _graph_importer(graph_holder["graph"])(
+            filepath,
+            parent_node,
+            float_nodes,
+        )
+
+    environment = _load_loader_modules(monkeypatch, import_graph)
+    graph_holder["graph"] = environment.graph
+    filepath = tmp_path / "raises.katana"
+    filepath.write_text("broken Katana graph", encoding="utf-8")
+    loader = environment.katana.KatanaImportLoader()
+
+    with pytest.raises(ValueError, match="broken Katana file"):
+        loader.load(_context(filepath, "representation-broken"))
+
+    assert environment.graph.root.getChildren() == []
+
+
 def test_katana_update_stages_then_replaces_managed_graph(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -985,7 +1011,7 @@ def test_katana_update_failed_import_preserves_existing_graph_and_metadata(
     user_node = environment.graph.CreateNode("Group", user_group)
     user_node.setName("ArtistAdjustment")
 
-    with pytest.raises(RuntimeError, match="Failed to prepare Katana graph update"):
+    with pytest.raises(ValueError, match="broken Katana file"):
         loader.update(
             before,
             _context(paths["raises"], "representation-raises"),

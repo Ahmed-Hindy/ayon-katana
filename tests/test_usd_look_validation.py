@@ -430,6 +430,92 @@ def test_optional_validators_skip_when_disabled_and_generic_usd_is_unrestricted(
     assert disallowed.ValidateUsdLookDisallowedTypes.optional is False
 
 
+@pytest.mark.parametrize(
+    ("filename", "class_name", "entry_point"),
+    [
+        (
+            "validate_usd_look_assignments.py",
+            "ValidateUsdLookAssignments",
+            "get_composed_source_stage",
+        ),
+        (
+            "validate_usd_look_material_definitions.py",
+            "ValidateUsdLookMaterialDefinitions",
+            "get_composed_source_stage",
+        ),
+        (
+            "validate_usd_look_disallowed_types.py",
+            "ValidateUsdLookDisallowedTypes",
+            "open_extracted_look_layer",
+        ),
+    ],
+)
+def test_look_validators_propagate_programming_errors(
+    monkeypatch,
+    filename: str,
+    class_name: str,
+    entry_point: str,
+) -> None:
+    """Unexpected implementation failures are not relabeled as scene errors."""
+    _install_pxr(monkeypatch)
+    look = _load_usd_look(monkeypatch)
+    validator = _load_validator(monkeypatch, filename, look)
+
+    def fail(_data):
+        raise AttributeError("unexpected implementation failure")
+
+    monkeypatch.setattr(validator, entry_point, fail)
+    instance = types.SimpleNamespace(
+        data={"productType": "look", "active": True, "layer_path": "look.usda"}
+    )
+
+    with pytest.raises(AttributeError, match="unexpected implementation failure"):
+        getattr(validator, class_name)().process(instance)
+
+
+@pytest.mark.parametrize(
+    ("filename", "class_name", "entry_point"),
+    [
+        (
+            "validate_usd_look_assignments.py",
+            "ValidateUsdLookAssignments",
+            "get_composed_source_stage",
+        ),
+        (
+            "validate_usd_look_material_definitions.py",
+            "ValidateUsdLookMaterialDefinitions",
+            "get_composed_source_stage",
+        ),
+        (
+            "validate_usd_look_disallowed_types.py",
+            "ValidateUsdLookDisallowedTypes",
+            "open_extracted_look_layer",
+        ),
+    ],
+)
+def test_look_validators_wrap_declared_scene_inspection_failures(
+    monkeypatch,
+    filename: str,
+    class_name: str,
+    entry_point: str,
+) -> None:
+    """Known scene/stage lookup failures remain artist-facing validation."""
+    _install_pxr(monkeypatch)
+    look = _load_usd_look(monkeypatch)
+    validator = _load_validator(monkeypatch, filename, look)
+
+    def fail(_data):
+        raise ValueError("invalid authored look scene")
+
+    monkeypatch.setattr(validator, entry_point, fail)
+    instance = types.SimpleNamespace(
+        data={"productType": "look", "active": True, "layer_path": "look.usda"}
+    )
+
+    with pytest.raises(FakeValidationError, match="invalid authored look scene"):
+        getattr(validator, class_name)().process(instance)
+
+
 def test_server_settings_register_look_validators() -> None:
     """Look checks use the intended optional validation contract."""
     source = (ROOT / "server" / "settings" / "main.py").read_text(encoding="utf-8")

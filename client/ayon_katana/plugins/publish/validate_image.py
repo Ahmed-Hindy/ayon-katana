@@ -53,13 +53,7 @@ class ValidateImage(
                 title="ImageWrite source missing",
             )
 
-        try:
-            settings = read_image_write_settings(image_write_node)
-        except Exception as exc:
-            raise PublishValidationError(
-                f"Failed to read ImageWrite settings: {exc}",
-                title="ImageWrite settings invalid",
-            ) from exc
+        settings = read_image_write_settings(image_write_node)
         if not settings["output_path"]:
             raise PublishValidationError(
                 "ImageWrite has no output path.",

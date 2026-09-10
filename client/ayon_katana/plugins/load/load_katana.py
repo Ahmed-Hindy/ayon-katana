@@ -98,23 +98,28 @@ class KatanaImportLoader(plugin.KatanaLoader):
 
     def load(self, context, name=None, namespace=None, options=None):
         """Import a Katana representation and return its container node."""
+        filepath = self._representation_path(context)
         product_name = name or context["product"]["name"]
         namespace = namespace or context["folder"]["name"]
-        container_node = containers.containerise(
-            name=product_name,
-            namespace=namespace,
-            context=context,
-            loader=self.__class__.__name__,
-        )
-        managed_group = containers.get_managed_group(container_node)
-        if managed_group is None:
-            raise RuntimeError("Failed to create the AYON managed group.")
-        imported_nodes = self._import_graph(
-            managed_group,
-            self.filepath_from_context(context),
-        )
-        self[:] = [container_node, *imported_nodes]
-        return container_node
+        container_node = None
+        try:
+            container_node = containers.containerise(
+                name=product_name,
+                namespace=namespace,
+                context=context,
+                loader=self.__class__.__name__,
+            )
+            managed_group = containers.get_managed_group(container_node)
+            if managed_group is None:
+                raise RuntimeError("Failed to create the AYON managed group.")
+            imported_nodes = self._import_graph(managed_group, filepath)
+            self[:] = [container_node, *imported_nodes]
+            return container_node
+        except Exception:
+            if container_node is not None:
+                with suppress(Exception):
+                    container_node.delete()
+            raise
 
     def update(self, container, context):
         """Replace a container's managed graph with a new representation."""
@@ -134,13 +139,11 @@ class KatanaImportLoader(plugin.KatanaLoader):
             )
             imported_nodes = self._import_graph(temporary_group, filepath)
             self._validate_update_candidate(temporary_group, user_group)
-        except Exception as exc:
+        except Exception:
             if temporary_group is not None:
                 with suppress(Exception):
                     temporary_group.delete()
-            raise RuntimeError(
-                f"Failed to prepare Katana graph update from {filepath!r}: {exc}"
-            ) from exc
+            raise
 
         containers.disconnect_managed_group_from_user(managed_group, user_group)
         containers.connect_managed_group_to_user(temporary_group, user_group)

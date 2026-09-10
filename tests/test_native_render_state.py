@@ -158,6 +158,7 @@ def _load_render_module(monkeypatch, root_node: FakeNode):
     katana_module = types.ModuleType("Katana")
     katana_module.NodegraphAPI = types.SimpleNamespace(
         GetRootNode=lambda: root_node,
+        GetNodePosition=lambda _node: (0.0, 0.0),
     )
     katana_module.RenderingAPI = types.SimpleNamespace(
         RenderPlugins=types.SimpleNamespace(GetRendererPluginNames=lambda: ["prman"])
@@ -176,6 +177,44 @@ def _load_render_module(monkeypatch, root_node: FakeNode):
         "ayon_katana.api.render",
         PROJECT_ROOT / "client" / "ayon_katana" / "api" / "render.py",
     )
+
+
+def test_native_node_position_errors_propagate(monkeypatch) -> None:
+    """Broken native graph positioning cannot silently alter output ordering."""
+
+    class OutputNode:
+        def getName(self) -> str:
+            return "output"
+
+        def getType(self) -> str:
+            return "RenderOutputDefine"
+
+    output_node = OutputNode()
+    root_node = types.SimpleNamespace(getChildren=lambda: [output_node])
+    render = _load_render_module(monkeypatch, root_node)
+    katana = sys.modules["Katana"]
+
+    def fail(_node):
+        raise RuntimeError("native node position failure")
+
+    katana.NodegraphAPI.GetNodePosition = fail
+    with pytest.raises(RuntimeError, match="native node position failure"):
+        render.get_output_nodes(root_node)
+
+
+def test_native_parameter_errors_propagate(monkeypatch) -> None:
+    """Existing Katana parameters must not hide native evaluation failures."""
+    parameter = FakeParameter("value")
+
+    def fail(_time):
+        raise RuntimeError("native parameter failure")
+
+    parameter.getValue = fail
+    root_node = FakeNode("root", {"broken": parameter})
+    render = _load_render_module(monkeypatch, root_node)
+
+    with pytest.raises(RuntimeError, match="native parameter failure"):
+        render._parameter_value(root_node, "broken", "fallback")
 
 
 def test_native_frame_range_overrides_stale_creator_metadata(monkeypatch) -> None:
@@ -739,6 +778,27 @@ def test_render_validators_reject_invalid_native_state(monkeypatch, tmp_path) ->
     with pytest.raises(FakePublishValidationError, match="no camera"):
         camera_validator.ValidateRenderCamera().process(
             types.SimpleNamespace(data={"camera": ""})
+        )
+
+    def fail_camera_cook(_node, _path):
+        raise RuntimeError("native camera cook failure")
+
+    camera_validator = _load_validator(
+        monkeypatch,
+        "validate_render_camera.py",
+        {
+            "compat": types.SimpleNamespace(get_node=lambda _name: object()),
+            "plugin": plugin,
+            "render": types.SimpleNamespace(
+                get_scenegraph_location_type=fail_camera_cook
+            ),
+        },
+    )
+    with pytest.raises(RuntimeError, match="native camera cook failure"):
+        camera_validator.ValidateRenderCamera().process(
+            types.SimpleNamespace(
+                data={"camera": "/root/world/cam/main", "render_node": "render"}
+            )
         )
 
     resolution_validator = _load_validator(

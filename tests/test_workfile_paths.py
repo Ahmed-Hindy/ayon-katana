@@ -253,6 +253,26 @@ def test_collect_workfile_references_uses_explicit_registry(
     assert references[1].is_expression is True
 
 
+@pytest.mark.parametrize("method_name", ["isExpression", "getValue"])
+def test_native_parameter_errors_propagate(
+    monkeypatch,
+    tmp_path: Path,
+    method_name: str,
+) -> None:
+    """Broken native parameter APIs cannot become empty workfile references."""
+    parameter = FakeParameter("asset.usd")
+
+    def fail(*_args):
+        raise RuntimeError("native parameter failure")
+
+    monkeypatch.setattr(parameter, method_name, fail)
+    nodes = [FakeNode("Usd", "UsdIn", {"fileName": parameter})]
+    dependencies, _validator, _selected = _install_runtime(monkeypatch, tmp_path, nodes)
+
+    with pytest.raises(RuntimeError, match="native parameter failure"):
+        dependencies.collect_workfile_references()
+
+
 def test_sequence_expansion_preserves_supported_tokens(
     monkeypatch,
     tmp_path: Path,

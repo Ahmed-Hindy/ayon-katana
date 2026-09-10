@@ -65,13 +65,12 @@ class FakeKatanaCreator:
         self.removed_instance = created_instance
 
     def update_instances(self, update_list) -> None:
-        """Apply the base creator's product-name rename behavior."""
+        """Model base rename and canonical node-identity persistence."""
         for created_instance, changes in update_list:
-            if "productName" not in changes.changed_keys:
-                continue
-            created_instance.transient_data["node"].setName(
-                changes["productName"].new_value
-            )
+            instance_node = created_instance.transient_data["node"]
+            if "productName" in changes.changed_keys:
+                instance_node.setName(changes["productName"].new_value)
+            created_instance["instance_node"] = instance_node.getName()
 
 
 class FakeCreatorError(Exception):
@@ -118,6 +117,7 @@ def _load_create_render_module(monkeypatch, default_renderer: str = "prman"):
         get_default_renderer=lambda preferred=None: preferred or default_renderer,
         get_registered_renderers=lambda: ["prman"],
         create_render_graph=lambda **kwargs: FakeNode("renderMain"),
+        get_render_node=lambda _node: FakeNode("renderMain"),
         get_settings_node=lambda _node: FakeNode("renderSettingsMain"),
         update_render_graph=lambda **kwargs: FakeNode("renderMain"),
     )
@@ -221,8 +221,27 @@ def _new_creator(module):
         get_current_folder_entity=lambda: {
             "attrib": {"frameStart": 1001, "frameEnd": 1002}
         },
+        get_current_task_entity=lambda: None,
     )
     return creator
+
+
+def test_creator_context_lookup_errors_propagate(monkeypatch) -> None:
+    """AYON context failures must not silently become default render values."""
+    module = _load_create_render_module(monkeypatch)
+    creator = _new_creator(module)
+
+    def fail():
+        raise RuntimeError("context lookup failed")
+
+    creator.create_context.get_current_folder_entity = fail
+    with pytest.raises(RuntimeError, match="context lookup failed"):
+        creator._current_frame_range()
+
+    creator = _new_creator(module)
+    creator.create_context.get_current_task_entity = fail
+    with pytest.raises(RuntimeError, match="context lookup failed"):
+        creator._current_task_handles()
 
 
 def test_creator_exposes_render_target_and_publish_owned_handles(monkeypatch) -> None:
@@ -333,6 +352,31 @@ def test_context_driven_product_rename_refreshes_render_node_references(
     assert imprints[-1][0] == "renderB04_context_mismatchMain"
 
 
+def test_product_rename_propagates_owned_render_lookup_errors(monkeypatch) -> None:
+    """Broken addon-owned render graph lookup cannot be silently ignored."""
+    module = _load_create_render_module(monkeypatch)
+    creator = _new_creator(module)
+    created_instance = creator.create(
+        "renderMain",
+        {"families": []},
+        {"use_selection": False},
+    )
+
+    class Changes:
+        changed_keys = {"productName"}
+
+        def __getitem__(self, key: str):
+            assert key == "productName"
+            return types.SimpleNamespace(new_value="renderRenamed")
+
+    def fail(_node):
+        raise RuntimeError("owned render lookup failed")
+
+    module.render.get_render_node = fail
+    with pytest.raises(RuntimeError, match="owned render lookup failed"):
+        creator.update_instances([(created_instance, Changes())])
+
+
 def test_creator_rejects_unknown_render_target(monkeypatch) -> None:
     """Only the explicit farm and local targets are supported."""
     module = _load_create_render_module(monkeypatch)
@@ -401,8 +445,9 @@ def test_creator_removes_incomplete_instance_when_graph_creation_fails(
         RuntimeError("graph failure")
     )
 
-    with pytest.raises(FakeCreatorError, match="Katana render creator failed"):
+    with pytest.raises(RuntimeError, match="graph failure") as exc_info:
         creator.create("renderMain", {"families": []}, {"use_selection": False})
+    assert str(exc_info.value) == "graph failure"
 
     assert creator.created_instance.transient_data["node"].deleted
     assert creator.removed_instance is creator.created_instance

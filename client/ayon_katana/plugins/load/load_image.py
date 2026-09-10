@@ -137,11 +137,11 @@ class ImageLoader(plugin.KatanaLoader):
             source_node.getOutputPort("out").connect(managed_group.getReturnPort("out"))
             self[:] = [container_node, source_node]
             return container_node
-        except Exception as exc:
+        except Exception:
             if container_node is not None:
                 with suppress(Exception):
                     container_node.delete()
-            raise RuntimeError(f"Failed to load image representation: {exc}") from exc
+            raise
 
     def update(self, container, context):
         """Update the managed path, colorspace, and container transactionally."""
@@ -179,14 +179,14 @@ class ImageLoader(plugin.KatanaLoader):
                     "loader": self.__class__.__name__,
                 },
             )
-        except Exception as exc:
+        except Exception:
             with suppress(Exception):
                 file_parameter.setValue(old_filepath, 0.0)
             with suppress(Exception):
                 colorspace_parameter.setValue(old_colorspace, 0.0)
             with suppress(Exception):
                 containers.update_container(container_node, old_container_data)
-            raise RuntimeError(f"Failed to update image representation: {exc}") from exc
+            raise
 
     def remove(self, container):
         """Remove the complete AYON image container."""

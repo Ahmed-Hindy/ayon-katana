@@ -39,8 +39,7 @@ class WorkfileReference:
     @property
     def node_name(self) -> str:
         """Return the node name."""
-        getter = getattr(self.node, "getName", None)
-        return str(getter()) if callable(getter) else "<unknown>"
+        return str(self.node.getName())
 
     @property
     def label(self) -> str:
@@ -182,10 +181,7 @@ def collect_workfile_references() -> list[WorkfileReference]:
     workfile_dir = Path(workfile_path).parent if workfile_path else None
     references = []
     for node in compat.iter_nodes():
-        get_type = getattr(node, "getType", None)
-        if not callable(get_type):
-            continue
-        node_type = str(get_type())
+        node_type = str(node.getType())
         parameter_names = REFERENCE_PARAMETERS.get(node_type)
         if not parameter_names:
             continue
@@ -234,39 +230,15 @@ def _reference_from_parameter(
 
 
 def _parameter_is_expression(parameter: Any) -> bool:
-    checker = getattr(parameter, "isExpression", None)
-    if callable(checker):
-        try:
-            return bool(checker())
-        except Exception:
-            pass
-    getter = getattr(parameter, "getExpression", None)
-    if callable(getter):
-        try:
-            return bool(getter())
-        except Exception:
-            return False
-    return False
+    return bool(parameter.isExpression())
 
 
 def _parameter_expression(parameter: Any) -> str:
-    getter = getattr(parameter, "getExpression", None)
-    if not callable(getter):
-        return ""
-    try:
-        return str(getter() or "")
-    except Exception:
-        return ""
+    return str(parameter.getExpression() or "")
 
 
 def _parameter_value(parameter: Any, time: float = 0.0) -> str:
-    getter = getattr(parameter, "getValue", None)
-    if not callable(getter):
-        return ""
-    try:
-        value = getter(float(time))
-    except Exception:
-        return ""
+    value = parameter.getValue(float(time))
     return "" if value is None else str(value)
 
 

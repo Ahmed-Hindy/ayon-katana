@@ -146,11 +146,7 @@ def apply_current_frame_range() -> bool:
     Returns:
         ``True`` when the active task supplied a valid frame range.
     """
-    try:
-        task_entity = _get_current_task_entity()
-    except Exception:
-        log.exception("Could not resolve the active AYON task frame range.")
-        return False
+    task_entity = _get_current_task_entity()
     if task_entity is None:
         log.warning("Cannot set Katana frame range without an active AYON task.")
         return False
@@ -249,11 +245,7 @@ def apply_context_settings(
     ):
         log.debug("Skipping Katana timing without a complete AYON context.")
         return context_data
-    try:
-        task_entity = _get_current_task_entity()
-    except Exception:
-        log.exception("Could not resolve the active AYON task for Katana timing.")
-        return context_data
+    task_entity = _get_current_task_entity()
 
     if task_entity is None:
         log.debug("Skipping Katana timing without an active AYON task.")

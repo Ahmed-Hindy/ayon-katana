@@ -108,7 +108,7 @@ def _get_applied_items(list_proxy: Any) -> list[Any]:
 
 
 def _iter_layer_composition_paths(layer: Any) -> list[str]:
-    output = [str(path) for path in getattr(layer, "subLayerPaths", []) if path]
+    output = [str(path) for path in layer.subLayerPaths if path]
 
     def inspect(path: Any) -> None:
         """Collect external references and payloads from one prim spec."""
@@ -119,7 +119,7 @@ def _iter_layer_composition_paths(layer: Any) -> list[str]:
             return
         for list_proxy in (prim_spec.referenceList, prim_spec.payloadList):
             for item in _get_applied_items(list_proxy):
-                asset_path = str(getattr(item, "assetPath", "") or "")
+                asset_path = str(item.assetPath or "")
                 if asset_path:
                     output.append(asset_path)
 
@@ -132,17 +132,14 @@ def _resolve_asset_against_layer(layer: Any, authored: str) -> str:
     filesystem_part = _asset_filesystem_part(authored)
     if Path(filesystem_part).is_absolute():
         return os.path.normpath(filesystem_part)
-    try:
-        from pxr import Sdf
+    from pxr import Sdf
 
-        resolved = Sdf.ComputeAssetPathRelativeToLayer(layer, filesystem_part)
-    except Exception:
-        resolved = ""
+    resolved = Sdf.ComputeAssetPathRelativeToLayer(layer, filesystem_part)
     if resolved and Path(resolved).is_absolute():
         return os.path.normpath(resolved)
 
-    for attribute in ("realPath", "resolvedPath", "identifier"):
-        layer_path = str(getattr(layer, attribute, "") or "")
+    for layer_path in (layer.realPath, layer.resolvedPath, layer.identifier):
+        layer_path = str(layer_path or "")
         if not layer_path or layer_path.startswith("anon:"):
             continue
         return os.path.normpath(str(Path(layer_path).parent / filesystem_part))
@@ -153,10 +150,7 @@ def build_source_composition_anchors(source_stage: Any) -> dict[str, set[str]]:
     """Map source-stage relative composition paths to their original resolutions."""
     if source_stage is None:
         return {}
-    try:
-        layers = list(source_stage.GetLayerStack())
-    except Exception:
-        return {}
+    layers = list(source_stage.GetLayerStack())
 
     anchors: dict[str, set[str]] = {}
     for layer in layers:
@@ -286,9 +280,8 @@ def rewrite_staged_usd_layer(
         temporary_path.unlink()
     try:
         export_args = {}
-        get_file_format = getattr(source_layer, "GetFileFormat", None)
-        if callable(get_file_format) and staged_path.suffix.lower() == ".usd":
-            format_id = str(getattr(get_file_format(), "formatId", "") or "")
+        if staged_path.suffix.lower() == ".usd":
+            format_id = str(source_layer.GetFileFormat().formatId or "")
             if format_id in {"usda", "usdc"}:
                 export_args["format"] = format_id
         exported = copied_layer.Export(_usd_path(temporary_path), args=export_args)

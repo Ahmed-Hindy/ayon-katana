@@ -9,7 +9,7 @@ from typing import Any
 from ayon_core.lib import BoolDef, EnumDef, NumberDef, TextDef
 from ayon_core.pipeline import CreatorError
 
-from ayon_katana.api import compat, instances, plugin
+from ayon_katana.api import compat, plugin
 from ayon_katana.api.image import configure_image_write
 
 
@@ -30,10 +30,7 @@ class CreateImage(plugin.KatanaCreator):
     default_review = False
 
     def _current_frame_range(self) -> tuple[int, int]:
-        try:
-            folder_entity = self.create_context.get_current_folder_entity()
-        except Exception:
-            folder_entity = None
+        folder_entity = self.create_context.get_current_folder_entity()
         attributes = (folder_entity or {}).get("attrib") or {}
         frame_start = attributes.get("frameStart")
         if frame_start is None:
@@ -156,20 +153,15 @@ class CreateImage(plugin.KatanaCreator):
                     raise RuntimeError("ImageWrite has no 'in' port.")
                 source_port.connect(input_port)
 
-            node_name = image_write_node.getName()
-            created_instance["instance_node"] = node_name
-            instances.imprint(image_write_node, created_instance.data_to_store())
             return created_instance
-        except Exception as exc:
+        except Exception:
             if image_write_node is not None:
                 with suppress(Exception):
                     image_write_node.delete()
             if created_instance is not None:
                 with suppress(Exception):
                     self._remove_instance_from_context(created_instance)
-            if isinstance(exc, CreatorError):
-                raise
-            raise CreatorError(f"Failed to create ImageWrite: {exc}") from exc
+            raise
 
     def get_pre_create_attr_defs(self):
         """Return pre-create ImageWrite settings."""

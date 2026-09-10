@@ -28,7 +28,7 @@ class ValidateUsdLookDisallowedTypes(plugin.KatanaInstancePlugin):
         try:
             layer = open_extracted_look_layer(instance.data)
             invalid_items = collect_disallowed_authored_look_items(layer)
-        except Exception as exc:
+        except (ValueError, RuntimeError) as exc:
             raise PublishValidationError(
                 f"Failed to inspect the extracted USD look layer: {exc}",
                 title="USD look layer inspection failed",

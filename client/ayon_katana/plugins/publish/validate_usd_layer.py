@@ -64,13 +64,7 @@ class ValidateUsdLayer(
                 title="USD source is not native",
             )
 
-        try:
-            settings = read_usd_layer_export_settings(export_node)
-        except Exception as exc:
-            raise PublishValidationError(
-                f"Failed to read UsdLayerExport settings: {exc}",
-                title="USD export settings invalid",
-            ) from exc
+        settings = read_usd_layer_export_settings(export_node)
         if settings["file_format"] not in USD_FILE_FORMATS:
             raise PublishValidationError(
                 f"Unsupported USD file format: {settings['file_format']!r}.",

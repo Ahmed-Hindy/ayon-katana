@@ -35,15 +35,10 @@ class ValidateRenderCamera(
             raise PublishValidationError(
                 "Katana Render node is unavailable for camera cook."
             )
-        try:
-            location_type = render.get_scenegraph_location_type(
-                render_node,
-                camera_path,
-            )
-        except Exception as exc:
-            raise PublishValidationError(
-                f"Katana camera location could not be resolved: {camera_path}"
-            ) from exc
+        location_type = render.get_scenegraph_location_type(
+            render_node,
+            camera_path,
+        )
         if location_type.casefold() != "camera":
             raise PublishValidationError(
                 f"Katana camera location is not a camera: {camera_path}"

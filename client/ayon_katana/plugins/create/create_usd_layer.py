@@ -8,7 +8,7 @@ from typing import Any
 from ayon_core.lib import BoolDef, EnumDef, NumberDef
 from ayon_core.pipeline import CreatorError
 
-from ayon_katana.api import compat, instances, plugin
+from ayon_katana.api import compat, plugin
 from ayon_katana.api.usd import configure_usd_layer_export, is_native_usd_node
 
 
@@ -29,10 +29,7 @@ class CreateUsdLayer(plugin.KatanaCreator):
 
     def _current_frame_range(self) -> tuple[int, int]:
         """Return cut-frame defaults from the current folder context."""
-        try:
-            folder_entity = self.create_context.get_current_folder_entity()
-        except Exception:
-            folder_entity = None
+        folder_entity = self.create_context.get_current_folder_entity()
         attributes = (folder_entity or {}).get("attrib") or {}
         frame_start = attributes.get("frameStart")
         if frame_start is None:
@@ -131,19 +128,15 @@ class CreateUsdLayer(plugin.KatanaCreator):
                     )
                 source_port.connect(input_port)
 
-            created_instance["instance_node"] = export_node.getName()
-            instances.imprint(export_node, created_instance.data_to_store())
             return created_instance
-        except Exception as exc:
+        except Exception:
             if export_node is not None:
                 with suppress(Exception):
                     export_node.delete()
             if created_instance is not None:
                 with suppress(Exception):
                     self._remove_instance_from_context(created_instance)
-            if isinstance(exc, CreatorError):
-                raise
-            raise CreatorError(f"Katana USD layer creator failed: {exc}") from exc
+            raise
 
     def get_pre_create_attr_defs(self):
         """Return native USD export settings used during creation."""

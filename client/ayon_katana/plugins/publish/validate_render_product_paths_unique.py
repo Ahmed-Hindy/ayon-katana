@@ -81,22 +81,15 @@ def _expected_files_by_aov(instance) -> dict[str, set[str]]:
 
 def _instance_node(instance):
     """Resolve an outer Katana render instance Group from published data."""
-    node_reference = instance.data.get("instance_node")
-    if node_reference is None:
+    node_name = instance.data.get("instance_node")
+    if node_name is None:
         return None
-    if hasattr(node_reference, "getName"):
-        return node_reference
-    return compat.get_node(str(node_reference))
+    return compat.get_node(node_name)
 
 
 def _node_key(node):
     """Return a stable identity for a Katana node inside one validation pass."""
-    if node is None:
-        return None
-    try:
-        return node.getName()
-    except Exception:
-        return id(node)
+    return None if node is None else node.getName()
 
 
 class ValidateRenderProductPathsUnique(
@@ -260,4 +253,4 @@ class ValidateRenderProductPathsUnique(
             value = instance.data.get(key)
             if value:
                 return str(value)
-        return str(getattr(instance, "id", id(instance)))
+        return str(instance.id)

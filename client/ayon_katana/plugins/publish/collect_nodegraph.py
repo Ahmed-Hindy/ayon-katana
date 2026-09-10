@@ -19,7 +19,7 @@ class CollectNodegraph(plugin.KatanaInstancePlugin):
         node_name = instance.data.get("nodegraph_node")
         if not node_name:
             return
-        node = compat.get_node(str(node_name))
+        node = compat.get_node(node_name)
         if node is not None:
             instance.data["nodegraph_node"] = node.getName()
 
@@ -33,7 +33,8 @@ class CollectNodegraphDependencies(plugin.KatanaInstancePlugin):
 
     def process(self, instance):
         """Collect representation dependencies from nested containers."""
-        source_node = compat.get_node(str(instance.data.get("nodegraph_node") or ""))
+        node_name = instance.data.get("nodegraph_node")
+        source_node = compat.get_node(node_name) if node_name else None
         if source_node is None:
             return
 

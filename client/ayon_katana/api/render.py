@@ -126,10 +126,7 @@ def get_registered_renderers(include_internal: bool = False) -> list[str]:
     Returns:
         Sorted renderer identifiers.
     """
-    try:
-        renderer_names = RenderingAPI.RenderPlugins.GetRendererPluginNames()
-    except Exception:
-        return []
+    renderer_names = RenderingAPI.RenderPlugins.GetRendererPluginNames()
     output = sorted({str(name) for name in renderer_names if name})
     if include_internal:
         return output
@@ -213,10 +210,7 @@ def _parameter_value(node, parameter_path: str, default=None):
     parameter = node.getParameter(parameter_path)
     if parameter is None:
         return default
-    try:
-        return parameter.getValue(_TIME)
-    except Exception:
-        return default
+    return parameter.getValue(_TIME)
 
 
 def _is_enabled(value) -> bool:
@@ -441,11 +435,8 @@ def get_output_nodes(instance_node) -> list:
 
     def sort_key(node):
         """Return graph position and name for deterministic output ordering."""
-        try:
-            position = NodegraphAPI.GetNodePosition(node)
-            return float(position[0]), node.getName()
-        except Exception:
-            return 0.0, node.getName()
+        position = NodegraphAPI.GetNodePosition(node)
+        return float(position[0]), node.getName()
 
     return sorted(output_nodes, key=sort_key)
 

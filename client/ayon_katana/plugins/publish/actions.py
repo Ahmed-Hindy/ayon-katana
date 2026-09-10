@@ -14,12 +14,10 @@ _RENDER_CREATOR_IDENTIFIER = "io.ayon.creators.katana.render"
 
 def _node_from_instance(instance):
     """Return the outer Katana node stored on a publish instance."""
-    node_reference = instance.data.get("instance_node")
-    if node_reference is None:
+    node_name = instance.data.get("instance_node")
+    if node_name is None:
         return None
-    if hasattr(node_reference, "getName"):
-        return node_reference
-    return compat.get_node(str(node_reference))
+    return compat.get_node(node_name)
 
 
 def _unique_nodes(nodes: Iterable) -> list:
@@ -29,10 +27,7 @@ def _unique_nodes(nodes: Iterable) -> list:
     for node in nodes:
         if node is None:
             continue
-        try:
-            key = node.getName()
-        except Exception:
-            key = id(node)
+        key = node.getName()
         if key in seen:
             continue
         seen.add(key)
@@ -93,12 +88,7 @@ def _invalid_instances(context, plugin) -> list:
 
 def _node_key(node):
     """Return a stable node identity suitable for a local selection operation."""
-    if node is None:
-        return None
-    try:
-        return node.getName()
-    except Exception:
-        return id(node)
+    return None if node is None else node.getName()
 
 
 class SelectInvalidInstanceNodes(pyblish.api.Action):

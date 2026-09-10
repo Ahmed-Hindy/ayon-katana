@@ -359,6 +359,8 @@ def get_scenegraph_location_type(render_node, location_path: str) -> str:
     if not location:
         return ""
     attributes = location.getAttrs()
+    if attributes is None:
+        return ""
     type_attribute = attributes.getChildByName("type")
     if type_attribute is None:
         return ""

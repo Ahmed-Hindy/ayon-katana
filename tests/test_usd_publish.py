@@ -480,6 +480,27 @@ def test_creator_rolls_back_and_preserves_native_configuration_error(
     assert creator.removed_instance is not None
 
 
+def test_creator_translates_invalid_usd_settings_to_creator_error(monkeypatch) -> None:
+    """Known invalid USD creator settings stay an expected AYON creator failure."""
+    module, _imprinted = _load_creator(monkeypatch, [])
+    creator = object.__new__(module.CreateUsdLayer)
+    creator.export_node = FakeUsdExportNode()
+    creator.create_context = types.SimpleNamespace(
+        get_current_folder_entity=lambda: {
+            "attrib": {"frameStart": 1001, "frameEnd": 1010}
+        }
+    )
+
+    def fail(*_args, **_kwargs):
+        raise ValueError("invalid USD setting")
+
+    monkeypatch.setattr(module, "configure_usd_layer_export", fail)
+    with pytest.raises(FakeCreatorError, match="Katana USD layer creator failed"):
+        creator.create("usdLayerMain", {"families": []}, {"use_selection": False})
+    assert creator.export_node.deleted
+    assert creator.removed_instance is not None
+
+
 def test_creator_connects_selected_output_and_persists_native_node(monkeypatch) -> None:
     """Creator wires one selected source directly into ``UsdLayerExport``."""
 

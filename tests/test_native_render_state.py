@@ -801,6 +801,24 @@ def test_render_validators_reject_invalid_native_state(monkeypatch, tmp_path) ->
             )
         )
 
+    camera_validator = _load_validator(
+        monkeypatch,
+        "validate_render_camera.py",
+        {
+            "compat": types.SimpleNamespace(get_node=lambda _name: object()),
+            "plugin": plugin,
+            "render": types.SimpleNamespace(
+                get_scenegraph_location_type=lambda *_args: ""
+            ),
+        },
+    )
+    with pytest.raises(FakePublishValidationError, match="could not be resolved"):
+        camera_validator.ValidateRenderCamera().process(
+            types.SimpleNamespace(
+                data={"camera": "/root/world/cam/missing", "render_node": "render"}
+            )
+        )
+
     resolution_validator = _load_validator(
         monkeypatch,
         "validate_render_resolution.py",

@@ -210,6 +210,17 @@ class CreateRender(plugin.KatanaCreator):
 
     def update_instances(self, update_list) -> None:
         """Update persisted render instance identity after creator edits."""
+        for created_instance, changes in update_list:
+            if "productName" not in changes.changed_keys:
+                continue
+            instance_node = created_instance.transient_data.get("node")
+            if instance_node is None:
+                continue
+            if render.get_render_node(instance_node) is None:
+                raise RuntimeError("Katana render graph has no Render node.")
+            if render.get_settings_node(instance_node) is None:
+                raise RuntimeError("Katana render graph has no RenderSettings node.")
+
         native_creator_keys = {
             "output_path",
             "output_name",

@@ -139,14 +139,17 @@ class CreateImage(plugin.KatanaCreator):
                 pre_create_data,
             )
             image_write_node = created_instance.transient_data["node"]
-            configure_image_write(
-                image_write_node,
-                output_path=output_path,
-                file_format=extension,
-                colorspace=colorspace,
-                single_frame=single_frame,
-                frame=frame,
-            )
+            try:
+                configure_image_write(
+                    image_write_node,
+                    output_path=output_path,
+                    file_format=extension,
+                    colorspace=colorspace,
+                    single_frame=single_frame,
+                    frame=frame,
+                )
+            except ValueError as exc:
+                raise CreatorError(f"Failed to create ImageWrite: {exc}") from exc
             if source_port is not None:
                 input_port = image_write_node.getInputPort("in")
                 if input_port is None:

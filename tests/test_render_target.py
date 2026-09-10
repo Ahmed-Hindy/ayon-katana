@@ -369,12 +369,18 @@ def test_product_rename_propagates_owned_render_lookup_errors(monkeypatch) -> No
             assert key == "productName"
             return types.SimpleNamespace(new_value="renderRenamed")
 
+    before_name = created_instance.transient_data["node"].getName()
+    before_instance_node = created_instance["instance_node"]
+
     def fail(_node):
         raise RuntimeError("owned render lookup failed")
 
     module.render.get_render_node = fail
     with pytest.raises(RuntimeError, match="owned render lookup failed"):
         creator.update_instances([(created_instance, Changes())])
+
+    assert created_instance.transient_data["node"].getName() == before_name
+    assert created_instance["instance_node"] == before_instance_node
 
 
 def test_creator_rejects_unknown_render_target(monkeypatch) -> None:

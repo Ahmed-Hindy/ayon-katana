@@ -322,6 +322,41 @@ def test_creator_rolls_back_and_preserves_native_configuration_error(
     assert creator.removed_instance is not None
 
 
+def test_creator_translates_invalid_image_settings_to_creator_error(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """Known invalid creator settings stay an expected AYON creator failure."""
+    module, _imprinted = _load_creator(monkeypatch, [])
+    creator = object.__new__(module.CreateImage)
+    creator.image_write_node = FakeImageWriteNode()
+    creator.create_context = types.SimpleNamespace(
+        get_current_folder_entity=lambda: {
+            "attrib": {"frameStart": 1001, "frameEnd": 1010}
+        },
+        host=types.SimpleNamespace(
+            get_current_workfile=lambda: str(tmp_path / "scene.katana")
+        ),
+    )
+
+    def fail(*_args, **_kwargs):
+        raise ValueError("invalid image setting")
+
+    monkeypatch.setattr(module, "configure_image_write", fail)
+    with pytest.raises(FakeCreatorError, match="Failed to create ImageWrite"):
+        creator.create(
+            "imageMain",
+            {"families": []},
+            {
+                "use_selection": False,
+                "output_path": str(tmp_path / "imageMain.####.exr"),
+                "extension": "exr",
+            },
+        )
+    assert creator.image_write_node.deleted
+    assert creator.removed_instance is not None
+
+
 def test_creator_connects_image_source_and_persists_farm_contract(
     monkeypatch,
     tmp_path: Path,

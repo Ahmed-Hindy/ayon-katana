@@ -428,23 +428,24 @@ Completed:
 - creator transactions and render updates
   - base, ImageWrite, USD, and Render creation still roll back newly owned nodes/instances on failure;
   - catch-all conversion to `CreatorError` was removed, so unexpected native/programming failures retain their original type and traceback;
-  - expected user/setup failures remain explicit `CreatorError` checks;
-  - render instance updates no longer repeat base live-node validation or swallow owned Render/RenderSettings lookup failures.
+  - known ImageWrite/USD configuration `ValueError`s are translated narrowly to `CreatorError`, preserving AYON's expected creator-failure semantics without masking unrelated native/programming failures;
+  - render product-name updates preflight the owned Render/RenderSettings children before the base creator can rename or imprint the outer instance, preventing partial scene mutation when an owned graph is already damaged.
 - loader transactions
   - Alembic, Image, USD, and Katana graph update rollback now preserves original exception types;
   - initial Katana graph loading now validates its path before graph mutation and deletes its newly created container on import/setup failure.
 - context timing
-  - active AYON task lookup errors now propagate from `apply_current_frame_range()` and `apply_context_settings()`;
-  - a legitimate missing task (`None`) still remains a normal no-timing state.
+  - AYON task lookup remains a lifecycle/service boundary: lookup failures are logged and leave Katana timing unchanged instead of escaping new-scene/task-change callbacks;
+  - once a task entity is resolved, Katana frame-range operations continue to use direct native calls;
+  - a legitimate missing task (`None`) remains a normal no-timing state.
 
-Tests were updated where isolated fake base creators or fake CreateContext objects failed to model the real framework contract. New regression tests explicitly verify that native parameter/settings/context failures propagate instead of being downgraded to empty/default values or artist validation errors.
+Tests were updated where isolated fake base creators or fake CreateContext objects failed to model the real framework contract. Regression coverage distinguishes expected AYON/domain failures from unexpected native/programming failures instead of treating every exception identically.
 
-Validation after the implementation work reached:
+Validation after the post-review corrections reached:
 
-- all incremental focused suites passed, including the final USD-stage, render, USD-look, loader-safety, and render-creator regression groups;
-- full suite: `415 passed`;
+- focused lifecycle/render/Image/USD suite: `101 passed`;
+- full suite: `416 passed`;
 - Ruff lint: passed;
-- Ruff format check: passed (`138 files already formatted`);
+- Ruff format check: passed (`152 files already formatted`);
 - `git diff --check`: passed.
 
 A dedicated ignored runtime smoke was added under `.local-backup/direct-native-call-smoke/` and run against both supported native hosts. It creates real Katana `ImageWrite`, `ImageRead`, `UsdLayerExport`, and native-USD `UsdLayerWrite` nodes and exercises the new direct parameter/node calls, graph-position access, workfile-reference collection, renderer registry, and composed native USD stage lookup.
@@ -455,6 +456,24 @@ Native results:
 - Katana 8.0v1: `DIRECT_NATIVE_CALL_SMOKE_PASSED`.
 
 Both runs used the current checkout. The smoke exercises documented `RenderingAPI.RenderPlugins.GetRendererPluginNames()` and `NodegraphAPI.GetNodePosition()` calls, the actual `nativeusd` flavor registry, `NodesUsdAPI.GetStage()`/`getUsdStage()` through a real `UsdLayerWrite`, and Foundry's bundled `fnpxr` Sdf/Usd API shape used by the standard `pxr` contracts in full USD environments: layer/path/spec/asset access, layer-stack access, time-sample listing, and file-format lookup. The expected minimal-environment warning about no valid renderer plug-ins did not affect these API checks.
+
+## Post-implementation live regression review
+
+The branch was compared side-by-side with clean `origin/develop` using real AYON-launched headless Katana processes, not mock tests as runtime evidence. The checkout client/resources were injected ahead of the installed staging Katana addon so the tested code was the branch itself.
+
+The comparison found and corrected four overreaches from the first direct-contract pass:
+
+- Katana 9 can return a cooked scenegraph location whose `getAttrs()` result is `None` for a missing path. The helper now treats that documented native result as unresolved, while other unexpected native exceptions still propagate. `ValidateRenderCamera` again reports a normal `PublishValidationError` for a missing camera path.
+- A damaged render instance previously failed `CreateContext.save_changes()` only after the base update had renamed/imprinted the outer instance. Owned Render/RenderSettings children are now checked before mutation; the live damaged-graph probe raises `CreatorsSaveFailed` with the node name and persisted product metadata unchanged.
+- Invalid ImageWrite/USD creator settings again surface as `CreatorError`, but only the configuration helpers' explicit `ValueError` contract is translated. Injected native `RuntimeError`s remain transparent after rollback.
+- AYON task lookup failures during timing/context lifecycle handling are logged and contained. This is an AYON/server boundary, not a Katana native API capability check, so direct-native-call cleanup does not justify making lifecycle callbacks brittle.
+
+Live headless matrix after the corrections:
+
+- Katana 9.0v1: real host startup/context, workfile path repair with native `Utils.UndoStack`, Image/USD/Nodegraph/Render creation, collectors/validators, save/reload recollection, native USD extraction/stage access, Sdf resource rewrite, and Image/Alembic/USD/Katana loader load/failure-rollback/update/remove all passed.
+- Katana 8.0v1: the same applicable matrix passed. This launch has no registered pixel renderer, so Render-creator/camera checks remain unavailable there.
+- Existing `testpr_sh01_storyboard_v036.katana` was loaded read-only on both Katana 9 and 8. Embedded context, creator recollection, native render graph collection, colorspace, and dependency scanning passed; the file digest remained unchanged. On Katana 8 only renderer-registration validation was skipped because PRMan is not registered in that process.
+- Side-by-side baseline testing confirmed the new `KatanaImportLoader` initial-load transaction is an improvement: `origin/develop` leaves a failed container behind for an invalid imported graph, while this branch removes it completely.
 
 Still intentionally deferred:
 

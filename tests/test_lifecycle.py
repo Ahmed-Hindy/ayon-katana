@@ -268,18 +268,18 @@ def test_context_settings_updates_range_without_simulating_fps(monkeypatch, capl
     assert "no authoritative project FPS setter" in caplog.text
 
 
-def test_context_task_lookup_errors_propagate(monkeypatch) -> None:
-    """AYON task lookup failures must not silently skip Katana timing updates."""
+def test_context_task_lookup_errors_do_not_break_lifecycle(monkeypatch, caplog) -> None:
+    """AYON task lookup failures leave Katana timing unchanged and are logged."""
     module = _load_context_module(monkeypatch, FakeNodegraph())
 
     def fail():
         raise RuntimeError("task lookup failed")
 
     monkeypatch.setattr(module, "_get_current_task_entity", fail)
-    with pytest.raises(RuntimeError, match="task lookup failed"):
-        module.apply_current_frame_range()
-    with pytest.raises(RuntimeError, match="task lookup failed"):
-        module.apply_context_settings(FakeContextHost())
+    assert module.apply_current_frame_range() is False
+    result = module.apply_context_settings(FakeContextHost())
+    assert result["project_name"] == "TestProject"
+    assert "task lookup failed" in caplog.text
 
 
 def test_context_updates_node_and_workfile_instance_metadata(monkeypatch):

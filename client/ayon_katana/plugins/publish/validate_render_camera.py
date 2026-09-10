@@ -39,6 +39,10 @@ class ValidateRenderCamera(
             render_node,
             camera_path,
         )
+        if not location_type:
+            raise PublishValidationError(
+                f"Katana camera location could not be resolved: {camera_path}"
+            )
         if location_type.casefold() != "camera":
             raise PublishValidationError(
                 f"Katana camera location is not a camera: {camera_path}"

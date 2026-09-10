@@ -111,15 +111,18 @@ class CreateUsdLayer(plugin.KatanaCreator):
                 pre_create_data,
             )
             export_node = created_instance.transient_data["node"]
-            configure_usd_layer_export(
-                export_node,
-                file_format=file_format,
-                time_samples=time_samples,
-                frame_start=frame_start,
-                frame_end=frame_end,
-                samples_per_frame=samples_per_frame,
-                export_method=export_method,
-            )
+            try:
+                configure_usd_layer_export(
+                    export_node,
+                    file_format=file_format,
+                    time_samples=time_samples,
+                    frame_start=frame_start,
+                    frame_end=frame_end,
+                    samples_per_frame=samples_per_frame,
+                    export_method=export_method,
+                )
+            except ValueError as exc:
+                raise CreatorError(f"Katana USD layer creator failed: {exc}") from exc
             if source_port is not None:
                 input_port = export_node.getInputPort("in")
                 if input_port is None:

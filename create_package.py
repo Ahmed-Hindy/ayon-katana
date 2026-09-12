@@ -38,6 +38,25 @@ def _zip_info(destination: str) -> zipfile.ZipInfo:
     return info
 
 
+def _package_file_bytes(filepath: Path) -> bytes:
+    """Return deterministic bytes for one packaged source file.
+
+    Python source is normalized to LF so Windows and Linux checkouts produce
+    identical package payloads even when Git checks out different line endings.
+    Non-Python resources are preserved byte-for-byte.
+
+    Args:
+        filepath: Source filesystem path.
+
+    Returns:
+        Bytes to store in the package archive.
+    """
+    payload = filepath.read_bytes()
+    if filepath.suffix == ".py":
+        payload = payload.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    return payload
+
+
 def _write_file(
     archive: zipfile.ZipFile,
     filepath: Path,
@@ -50,7 +69,7 @@ def _write_file(
         filepath: Source filesystem path.
         destination: POSIX path stored in the archive.
     """
-    archive.writestr(_zip_info(destination), filepath.read_bytes())
+    archive.writestr(_zip_info(destination), _package_file_bytes(filepath))
 
 
 def _load_package_metadata() -> ModuleType:

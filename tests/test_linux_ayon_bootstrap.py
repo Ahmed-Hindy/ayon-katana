@@ -60,6 +60,7 @@ def test_bootstrap_keeps_authentication_secrets_out_of_docker_arguments(
     monkeypatch.setenv("AYON_KATANA_LIVE_TASK", "lookdev")
     monkeypatch.setenv("AYON_KATANA_LIVE_APPLICATIONS", "katana/9.0v1")
     monkeypatch.setenv("AYON_KATANA_LIVE_SUITE", "native")
+    monkeypatch.setenv("AYON_KATANA_LINUX_OUTPUT", str(tmp_path / "output"))
 
     captured = {}
 

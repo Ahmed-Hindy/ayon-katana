@@ -17,13 +17,7 @@ def _run_probe() -> None:
         return [action.text().replace("&", "").strip() for action in actions]
 
     result_path = Path(os.environ["AYON_KATANA_LIVE_RESULT"])
-    checks = [
-        "AYON lifecycle installs one top-level menu in Katana UI",
-        "repeated AYON menu installation remains idempotent",
-        "expected AYON menu actions are available",
-        "Workfile Builder submenu actions are available",
-        "safe AYON host-tool windows open successfully in Katana UI",
-    ]
+    checks = []
     coverage_gaps = [
         "Scene-mutating menu actions are not triggered by UI smoke.",
     ]
@@ -48,6 +42,7 @@ def _run_probe() -> None:
                 "Expected AYON lifecycle to install exactly one top-level menu "
                 f"before the UI probe, found {before_count}."
             )
+        checks.append("AYON lifecycle installs one top-level menu in Katana UI")
 
         first_install = ayon_menu.install_menu()
         second_install = ayon_menu.install_menu()
@@ -62,6 +57,7 @@ def _run_probe() -> None:
                 "Expected one AYON top-level menu after reinstall, found "
                 f"{len(ayon_actions)}."
             )
+        checks.append("repeated AYON menu installation remains idempotent")
 
         menu = ayon_actions[0].menu()
         if menu is None:
@@ -84,6 +80,7 @@ def _run_probe() -> None:
         missing = sorted(expected.difference(menu_labels))
         if missing:
             raise RuntimeError(f"AYON menu is missing expected actions: {missing}")
+        checks.append("expected AYON menu actions are available")
 
         version_up_action = next(
             action
@@ -121,6 +118,7 @@ def _run_probe() -> None:
             raise RuntimeError(
                 f"Workfile Builder menu is missing expected actions: {missing_builder}"
             )
+        checks.append("Workfile Builder submenu actions are available")
 
         from ayon_core.tools.utils import host_tools
 
@@ -163,6 +161,7 @@ def _run_probe() -> None:
         if not publisher_publish.isVisible():
             raise RuntimeError("AYON Publisher is not visible on publish tab.")
         tool_classes["publisher_publish"] = type(publisher_publish).__name__
+        checks.append("safe AYON host-tool windows open successfully in Katana UI")
 
         from ayon_katana.api import thumbnail as thumbnail_api
 
@@ -225,10 +224,12 @@ def _run_probe() -> None:
                 widget.close()
         QtWidgets.QApplication.processEvents()
         result_path.parent.mkdir(parents=True, exist_ok=True)
-        result_path.write_text(
+        staging_path = result_path.with_name(f".{result_path.name}.tmp")
+        staging_path.write_text(
             json.dumps(payload, indent=2, sort_keys=True),
             encoding="utf-8",
         )
+        staging_path.replace(result_path)
 
 
 def _on_startup_complete(*_args, _run=_run_probe, **_kwargs) -> None:

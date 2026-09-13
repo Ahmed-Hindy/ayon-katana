@@ -190,8 +190,11 @@ def main() -> None:
         result["error_type"] = type(exc).__name__
         result["error"] = traceback.format_exc()
     finally:
-        if before is None or not WORKFILE.is_file():
+        if before is None:
             result["fixture_unchanged"] = None
+        elif not WORKFILE.is_file():
+            result["fixture_unchanged"] = False
+            result["success"] = False
         else:
             result["fixture_unchanged"] = digest(WORKFILE) == before
             if not result["fixture_unchanged"]:

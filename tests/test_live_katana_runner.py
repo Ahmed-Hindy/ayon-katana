@@ -113,6 +113,8 @@ def test_live_runner_loads_explicit_local_configuration(
     monkeypatch.setenv("AYON_KATANA_LIVE_APPLICATIONS", "katana/9.0v1")
     monkeypatch.setenv("AYON_KATANA_LIVE_SUITE", "native,integration,acceptance")
     monkeypatch.setenv("AYON_KATANA_LIVE_OUTPUT", str(tmp_path))
+    monkeypatch.delenv("AYON_KATANA_LIVE_WORKFILE", raising=False)
+    monkeypatch.delenv("AYON_KATANA_LIVE_TIMEOUT", raising=False)
 
     config = runner.load_config()
 
@@ -150,6 +152,8 @@ def test_live_runner_automated_suite_excludes_private_workfile_case(
     monkeypatch.setenv("AYON_KATANA_LIVE_FOLDER", "/assets/hero")
     monkeypatch.setenv("AYON_KATANA_LIVE_TASK", "lookdev")
     monkeypatch.setenv("AYON_KATANA_LIVE_SUITE", "automated")
+    monkeypatch.delenv("AYON_KATANA_LIVE_WORKFILE", raising=False)
+    monkeypatch.delenv("AYON_KATANA_LIVE_TIMEOUT", raising=False)
 
     config = runner.load_config()
 
@@ -334,6 +338,7 @@ def test_beta_live_workflow_stays_manual_local_first_and_private() -> None:
 
     assert "[BETA/WIP]" in workflow
     assert "workflow_dispatch:" in workflow
+    assert "persist-credentials: false" in workflow
     assert "pull_request:" not in workflow
     assert "push:" not in workflow
     assert "continue-on-error" not in workflow

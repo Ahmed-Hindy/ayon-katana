@@ -242,7 +242,7 @@ def exercise_loaders() -> None:
     for path in (image_a, image_b, alembic_a, alembic_b):
         path.write_bytes(b"live loader fixture")
 
-    from pxr import Sdf
+    from fnpxr import Sdf
 
     usd_a = OUT / "loader-a.usda"
     usd_b = OUT / "loader-b.usda"

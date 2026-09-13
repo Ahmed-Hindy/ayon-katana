@@ -16,7 +16,8 @@ from pathlib import Path
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_APPLICATIONS = ("katana/9.0v1", "katana/8.0v1")
-VALID_SUITES = ("native", "integration", "existing")
+VALID_SUITES = ("native", "integration", "acceptance", "render", "existing")
+AUTOMATED_SUITES = ("native", "integration", "acceptance", "render")
 
 
 @dataclass(frozen=True)
@@ -66,7 +67,12 @@ def load_config() -> LiveConfig:
         raise RuntimeError("AYON_KATANA_LIVE_APPLICATIONS resolved to no applications.")
 
     suite_value = os.environ.get("AYON_KATANA_LIVE_SUITE", "native").strip().casefold()
-    suites = VALID_SUITES if suite_value == "all" else _csv(suite_value)
+    if suite_value == "all":
+        suites = VALID_SUITES
+    elif suite_value == "automated":
+        suites = AUTOMATED_SUITES
+    else:
+        suites = _csv(suite_value)
     if not suites:
         raise RuntimeError("AYON_KATANA_LIVE_SUITE resolved to no suites.")
     unknown = sorted(set(suites) - set(VALID_SUITES))
@@ -149,6 +155,9 @@ def prepare_environment(
     env["AYON_KATANA_LIVE_APPLICATION"] = application_name
     env["AYON_KATANA_LIVE_OUT"] = str(output_dir)
     env["AYON_KATANA_LIVE_RESULT"] = str(result_path)
+    executable_override = os.environ.get("AYON_KATANA_LIVE_EXECUTABLE", "").strip()
+    if executable_override:
+        env["KATANA_ROOT"] = str(Path(executable_override).resolve().parent.parent)
     if existing_workfile is not None:
         env["AYON_KATANA_LIVE_WORKFILE"] = str(existing_workfile)
     env.pop("SSLKEYLOGFILE", None)
@@ -161,6 +170,8 @@ def _suite_script(suite: str) -> Path:
         {
             "native": "native_contracts.py",
             "integration": "integration_smoke.py",
+            "acceptance": "acceptance_smoke.py",
+            "render": "render_smoke.py",
             "existing": "existing_workfile.py",
         }[suite]
     )
@@ -249,9 +260,17 @@ def _resolve_application_run(
     application = applications_manager.applications.get(application_name)
     if application is None:
         raise RuntimeError(f"AYON application is not configured: {application_name}")
-    executable = application.find_executable()
-    if executable is None:
-        raise RuntimeError(f"Katana executable was not found: {application_name}")
+    executable_override = os.environ.get("AYON_KATANA_LIVE_EXECUTABLE", "").strip()
+    if executable_override:
+        executable = Path(executable_override).resolve()
+        if not executable.is_file():
+            raise RuntimeError(
+                f"Katana executable override does not exist: {executable_override}"
+            )
+    else:
+        executable = application.find_executable()
+        if executable is None:
+            raise RuntimeError(f"Katana executable was not found: {application_name}")
     base_env = applications_addon.get_app_environments_for_context(
         config.project_name,
         config.folder_path,

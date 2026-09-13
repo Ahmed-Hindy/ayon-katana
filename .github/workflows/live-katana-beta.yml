@@ -15,12 +15,25 @@ on:
         options:
           - native
           - integration
-        default: native
+          - acceptance
+          - render
+          - automated
+        default: automated
       applications:
         description: "Comma-separated AYON application names"
         required: true
         type: string
         default: "katana/9.0v1,katana/8.0v1"
+      linux_probe:
+        description: "Also run the pre-provisioned Rocky Linux Katana host probe"
+        required: true
+        type: boolean
+        default: true
+      linux_ayon:
+        description: "Also run the official Rocky Linux AYON/Katana suite"
+        required: true
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -42,6 +55,9 @@ jobs:
       AYON_KATANA_LIVE_APPLICATIONS: ${{ inputs.applications }}
       AYON_KATANA_LIVE_SUITE: ${{ inputs.suite }}
       AYON_KATANA_LIVE_OUTPUT: ${{ github.workspace }}\.artifacts\live-katana
+      AYON_KATANA_LINUX_IMAGE: ${{ vars.AYON_KATANA_LINUX_IMAGE }}
+      AYON_KATANA_LINUX_AYON_IMAGE: ${{ vars.AYON_KATANA_LINUX_AYON_IMAGE }}
+      FOUNDRY_LICENSE_SERVER: ${{ vars.FOUNDRY_LICENSE_SERVER }}
 
     steps:
       - name: Checkout
@@ -80,11 +96,52 @@ jobs:
             -PublicOutput `
             -Output $env:AYON_KATANA_LIVE_OUTPUT
 
+      - name: Run Rocky Linux Katana host probe
+        if: ${{ inputs.linux_probe }}
+        shell: pwsh
+        run: |
+          $image = $env:AYON_KATANA_LINUX_IMAGE
+          if (-not $image) {
+            $image = "ayon-katana/katana9-rocky:9.0v1"
+          }
+          $licenseServer = $env:FOUNDRY_LICENSE_SERVER
+          if (-not $licenseServer) {
+            $licenseServer = "4101@host.docker.internal"
+          }
+          & .\tests\live\katana\run-linux-probe.ps1 `
+            -Image $image `
+            -LicenseServer $licenseServer
+
+      - name: Run Rocky Linux AYON/Katana suite
+        if: ${{ inputs.linux_ayon }}
+        shell: pwsh
+        run: |
+          $image = $env:AYON_KATANA_LINUX_AYON_IMAGE
+          if (-not $image) {
+            $image = "ayon-katana/katana9-rocky:ayon-1.6.0"
+          }
+          $licenseServer = $env:FOUNDRY_LICENSE_SERVER
+          if (-not $licenseServer) {
+            $licenseServer = "4101@host.docker.internal"
+          }
+          & .\tests\live\katana\run-linux-ayon.ps1 `
+            -Project $env:AYON_KATANA_LIVE_PROJECT `
+            -Folder $env:AYON_KATANA_LIVE_FOLDER `
+            -Task $env:AYON_KATANA_LIVE_TASK `
+            -Application "katana/9.0v1" `
+            -Suite $env:AYON_KATANA_LIVE_SUITE `
+            -Image $image `
+            -LicenseServer $licenseServer `
+            -Output "${{ github.workspace }}\.artifacts\live-katana-linux" `
+            -AyonConsole $env:AYON_CONSOLE
+
       - name: Upload live Katana artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: live-katana-beta-${{ github.run_id }}
-          path: .artifacts/live-katana/public-summary.json
+          path: |
+            .artifacts/live-katana/public-summary.json
+            .artifacts/live-katana-linux/public-summary.json
           if-no-files-found: warn
           retention-days: 7

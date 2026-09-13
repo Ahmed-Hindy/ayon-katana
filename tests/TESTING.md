@@ -44,13 +44,24 @@ This suite is currently **BETA/WIP and local-first**. It is not a required pull
 request gate. Use `tests/live/katana/run-local.ps1` from PowerShell; see
 `tests/live/katana/README.md` for setup and commands.
 
-The live suite has three scopes:
+The live suite has six scopes:
 
 - `native`: Foundry/Katana API contracts only;
 - `integration`: real AYON host, Creator/CreateContext, Pyblish and transactional
   addon behavior in Katana;
+- `acceptance`: disposable high-level workfile, nodegraph, inventory, Workfile
+  Builder, discovery and Deadline-metadata workflows;
+- `render`: one real local frame through the production render extractor using a
+  disposable workfile copy;
+- `automated`: `native` + `integration` + `acceptance` + `render`, intended to
+  replace most repetitive manual headless acceptance;
 - `existing`: read-only compatibility against an explicitly supplied `.katana`
   workfile.
+
+`linux_host_probe.py` is the AYON-independent Rocky Linux container probe used
+to validate Katana/licensing first. Full Linux acceptance then runs the same live
+suites through the official server-distributed AYON launcher, addon clients and
+bundle dependency package with `run-linux-ayon.ps1`.
 
 Live scripts emit structured JSON. Missing optional host capabilities such as an
 unavailable renderer are reported as `coverage_gaps`, not silently counted as
@@ -64,8 +75,10 @@ suite locally on each supported Katana version where practical and include the
 result in review notes.
 
 The manual GitHub Actions live workflow is intentionally marked BETA/WIP. It is a
-future self-hosted-runner entry point, not a required status check. It exposes only
-`native` and `integration`; existing-workfile compatibility remains local-only.
+self-hosted-runner entry point, not a required status check. It exposes `native`,
+`integration`, `acceptance`, `render`, and `automated` on Windows and can run the
+same selected suite through official Rocky Linux AYON/Katana 9 acceptance;
+existing-workfile compatibility remains local-only.
 Workflow failures remain visible as failures, while the absence of automatic PR
 triggers and required-check configuration keeps the beta workflow non-blocking.
 Only a sanitized public summary is uploaded from a self-hosted run. A unit guard

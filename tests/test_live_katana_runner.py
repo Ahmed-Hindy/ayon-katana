@@ -48,6 +48,59 @@ def test_live_runner_strips_only_installed_katana_addon_paths() -> None:
     assert r"C:\Program Files\Katana9.0v1\plugins" in result
 
 
+def test_live_runner_executable_override_keeps_ayon_environment(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Linux can override only Katana discovery while preserving AYON launch env."""
+    runner = _load_runner()
+    executable = tmp_path / "Katana9.0v1" / "bin" / "katanaBin"
+    executable.parent.mkdir(parents=True)
+    executable.write_text("", encoding="utf-8")
+    monkeypatch.setenv("AYON_KATANA_LIVE_EXECUTABLE", str(executable))
+
+    class FakeApplication:
+        def find_executable(self):
+            raise AssertionError("Platform executable lookup must be bypassed.")
+
+    class FakeApplicationsManager:
+        applications = {"katana/9.0v1": FakeApplication()}
+
+    class FakeApplicationsAddon:
+        @staticmethod
+        def get_app_environments_for_context(*_args):
+            return {"KATANA_ROOT": "/wrong/platform/path", "AYON_TEST": "1"}
+
+    config = runner.LiveConfig(
+        project_name="ProjectA",
+        folder_path="/assets/hero",
+        task_name="lookdev",
+        applications=("katana/9.0v1",),
+        suites=("native",),
+        output_root=tmp_path,
+        existing_workfile=None,
+        timeout_seconds=30,
+    )
+
+    resolved, base_env = runner._resolve_application_run(
+        config,
+        "katana/9.0v1",
+        FakeApplicationsAddon(),
+        FakeApplicationsManager(),
+    )
+    assert resolved == executable.resolve()
+    assert base_env["AYON_TEST"] == "1"
+
+    launch_env = runner.prepare_environment(
+        base_env,
+        "katana/9.0v1",
+        tmp_path / "out",
+        tmp_path / "result.json",
+        None,
+    )
+    assert launch_env["KATANA_ROOT"] == str(executable.resolve().parent.parent)
+
+
 def test_live_runner_loads_explicit_local_configuration(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -58,7 +111,7 @@ def test_live_runner_loads_explicit_local_configuration(
     monkeypatch.setenv("AYON_KATANA_LIVE_FOLDER", "/assets/hero")
     monkeypatch.setenv("AYON_KATANA_LIVE_TASK", "lookdev")
     monkeypatch.setenv("AYON_KATANA_LIVE_APPLICATIONS", "katana/9.0v1")
-    monkeypatch.setenv("AYON_KATANA_LIVE_SUITE", "native,integration")
+    monkeypatch.setenv("AYON_KATANA_LIVE_SUITE", "native,integration,acceptance")
     monkeypatch.setenv("AYON_KATANA_LIVE_OUTPUT", str(tmp_path))
 
     config = runner.load_config()
@@ -67,7 +120,7 @@ def test_live_runner_loads_explicit_local_configuration(
     assert config.folder_path == "/assets/hero"
     assert config.task_name == "lookdev"
     assert config.applications == ("katana/9.0v1",)
-    assert config.suites == ("native", "integration")
+    assert config.suites == ("native", "integration", "acceptance")
     assert config.output_root == tmp_path
     assert config.existing_workfile is None
 
@@ -86,6 +139,24 @@ def test_live_runner_rejects_filesystem_rewritten_folder_path(
 
     with pytest.raises(RuntimeError, match="AYON folder path beginning with '/'"):
         runner.load_config()
+
+
+def test_live_runner_automated_suite_excludes_private_workfile_case(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Automated coverage runs all disposable suites without a personal workfile."""
+    runner = _load_runner()
+    monkeypatch.setenv("AYON_KATANA_LIVE_PROJECT", "ProjectA")
+    monkeypatch.setenv("AYON_KATANA_LIVE_FOLDER", "/assets/hero")
+    monkeypatch.setenv("AYON_KATANA_LIVE_TASK", "lookdev")
+    monkeypatch.setenv("AYON_KATANA_LIVE_SUITE", "automated")
+
+    config = runner.load_config()
+
+    assert config.suites == ("native", "integration", "acceptance", "render")
+    assert config.existing_workfile is None
+    assert runner._suite_script("acceptance").name == "acceptance_smoke.py"
+    assert runner._suite_script("render").name == "render_smoke.py"
 
 
 def test_live_runner_requires_workfile_only_for_existing_suite(
@@ -209,6 +280,15 @@ def test_beta_live_workflow_stays_manual_local_first_and_private() -> None:
     assert "-QuietHostOutput" in workflow
     assert "-PublicOutput" in workflow
     assert "public-summary.json" in workflow
+    assert "- acceptance" in workflow
+    assert "- automated" in workflow
+    assert "linux_probe:" in workflow
+    assert "run-linux-probe.ps1" in workflow
+    assert "inputs.linux_ayon" in workflow
+    assert "run-linux-ayon.ps1" in workflow
+    assert ".artifacts/live-katana-linux/public-summary.json" in workflow
+    assert "build-linux-image.ps1" not in workflow
+    assert "Katana9.0v1-linux-x86-release-64.tgz" not in workflow
     assert "path: .artifacts/live-katana\n" not in workflow
     assert "tests/live/katana" not in normal_ci
 

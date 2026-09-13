@@ -14,6 +14,7 @@ from pathlib import Path
 from create_package import (
     _ZIP_TIMESTAMP,
     _sync_client_version,
+    _write_file,
     build_package,
     extract_package,
 )
@@ -99,6 +100,59 @@ def test_package_build_is_reproducible(tmp_path: Path) -> None:
         )
 
 
+def test_package_normalizes_python_line_endings_only(tmp_path: Path) -> None:
+    """Package Python source identically across Windows and Linux checkouts."""
+    python_source = tmp_path / "module.py"
+    binary_resource = tmp_path / "resource.bin"
+    python_source.write_bytes(b'print("katana")\r\nvalue = 1\r')
+    binary_resource.write_bytes(b"\x00\r\n\x01\r")
+
+    output_stream = io.BytesIO()
+    with zipfile.ZipFile(output_stream, "w", zipfile.ZIP_DEFLATED) as archive:
+        _write_file(archive, python_source, "module.py")
+        _write_file(archive, binary_resource, "resource.bin")
+
+    with zipfile.ZipFile(io.BytesIO(output_stream.getvalue())) as archive:
+        assert archive.read("module.py") == b'print("katana")\nvalue = 1\n'
+        assert archive.read("resource.bin") == b"\x00\r\n\x01\r"
+
+
+def test_package_matches_across_lf_and_crlf_checkouts(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """Equivalent LF and CRLF source trees must produce identical archives."""
+
+    def build_fixture(root: Path, newline: bytes) -> bytes:
+        package_path = root / "package.py"
+        server_root = root / "server"
+        client_root = root / "client" / "ayon_katana"
+        version_path = client_root / "version.py"
+        server_root.mkdir(parents=True)
+        client_root.mkdir(parents=True)
+
+        package_path.write_bytes(
+            newline.join((b'name = "katana"', b'version = "0.1.64"', b""))
+        )
+        (server_root / "addon.py").write_bytes(newline.join((b'HOST = "katana"', b"")))
+        version_path.write_bytes(newline.join((b'__version__ = "0.1.64"', b"")))
+        (client_root / "addon.py").write_bytes(newline.join((b'HOST = "katana"', b"")))
+        (client_root / "resource.bin").write_bytes(b"\x00\r\n\x01\r")
+
+        monkeypatch.setattr("create_package.PACKAGE_METADATA_PATH", package_path)
+        monkeypatch.setattr("create_package.SERVER_ROOT", server_root)
+        monkeypatch.setattr("create_package.CLIENT_ROOT", client_root)
+        monkeypatch.setattr("create_package.CLIENT_VERSION_PATH", version_path)
+
+        built_path = build_package(root / "output")
+        return built_path.read_bytes()
+
+    lf_package = build_fixture(tmp_path / "lf", b"\n")
+    crlf_package = build_fixture(tmp_path / "crlf", b"\r\n")
+
+    assert lf_package == crlf_package
+
+
 def test_package_requires_core_workfile_builder_triggers() -> None:
     """The addon cannot resolve against Core versions missing trigger APIs."""
     assert PACKAGE_METADATA["ayon_required_addons"]["core"] == ">=1.9.9"
@@ -126,7 +180,7 @@ def test_addon_version_is_declared_only_in_runtime_metadata() -> None:
         Path("package.py"),
         Path("client/ayon_katana/version.py"),
     }
-    ignored_parts = {".git", ".idea", ".venv", "package", "site"}
+    ignored_parts = {".artifacts", ".git", ".idea", ".venv", "package", "site"}
     assignment = re.compile(
         rf"(?m)^(?:version|__version__)\s*=\s*[\"']"
         rf"{re.escape(ADDON_VERSION)}[\"']\s*$"

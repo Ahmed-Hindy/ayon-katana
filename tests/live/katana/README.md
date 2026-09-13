@@ -70,10 +70,11 @@ Available suites:
   usable render instance or renderer;
 - `ui`: launch the real Katana UI, verify AYON's deferred startup lifecycle
   installed exactly one AYON menu, verify repeated installation is idempotent,
-  validate the expected menu and Workfile Builder submenu actions, and open/close
-  the safe Publisher, Loader, Scene Inventory, Workfiles, and Experimental Tools
-  windows. Scene-mutating actions remain untouched. The disposable UI process is
-  terminated by the harness after its result is written;
+  validate the expected menu and Workfile Builder submenu actions, open/close the
+  safe Publisher, Loader, Scene Inventory, Workfiles, and Experimental Tools
+  windows, and capture a temporary PNG from an unambiguous visible Viewer when
+  available. Scene-mutating actions remain untouched. The disposable UI process
+  is terminated by the harness after its result is written;
 - `automated`: run `native`, `integration`, `acceptance`, and `render`; this is
   the broad portable/headless acceptance mode and intentionally excludes `ui`;
 - `existing`: read-only compatibility against a supplied workfile;

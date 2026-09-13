@@ -151,6 +151,37 @@ def _run_probe() -> None:
             raise RuntimeError("AYON Publisher is not visible on publish tab.")
         tool_classes["publisher_publish"] = type(publisher_publish).__name__
 
+        from ayon_katana.api import thumbnail as thumbnail_api
+
+        viewer_widget, viewer_reason = thumbnail_api.select_viewer_widget()
+        viewer_capture = {
+            "reason": viewer_reason,
+            "captured": False,
+        }
+        if viewer_widget is None:
+            coverage_gaps.append(
+                f"Viewer thumbnail capture unavailable: {viewer_reason}."
+            )
+        else:
+            thumbnail_path = thumbnail_api.capture_viewer_thumbnail(viewer_widget)
+            try:
+                thumbnail_file = Path(thumbnail_path)
+                thumbnail_size = thumbnail_file.stat().st_size
+                if thumbnail_size < 1:
+                    raise RuntimeError(
+                        "Viewer thumbnail capture produced an empty PNG."
+                    )
+                checks.append("visible Katana Viewer thumbnail capture produces a PNG")
+                viewer_capture.update(
+                    {
+                        "captured": True,
+                        "bytes": thumbnail_size,
+                    }
+                )
+            finally:
+                with suppress(OSError):
+                    Path(thumbnail_path).unlink()
+
         payload.update(
             {
                 "success": True,
@@ -162,6 +193,7 @@ def _run_probe() -> None:
                     "menu_labels": menu_labels,
                     "builder_labels": builder_labels,
                     "tool_classes": tool_classes,
+                    "viewer_capture": viewer_capture,
                 },
             }
         )

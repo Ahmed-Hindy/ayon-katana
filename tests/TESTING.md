@@ -55,7 +55,8 @@ The live suite has seven scopes:
 - `render`: one real local frame through the production render extractor using a
   disposable workfile copy;
 - `ui`: real interactive startup, deferred AYON menu lifecycle, duplicate-menu
-  prevention, and expected menu/submenu structure;
+  prevention, expected menu/submenu structure, and safe host-tool window creation
+  for Publisher, Loader, Scene Inventory, Workfiles, and Experimental Tools;
 - `automated`: `native` + `integration` + `acceptance` + `render`, intended to
   replace most repetitive portable/headless acceptance; `ui` stays separate;
 - `existing`: read-only compatibility against an explicitly supplied `.katana`

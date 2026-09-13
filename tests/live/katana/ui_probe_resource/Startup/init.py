@@ -8,7 +8,10 @@ def _run_probe() -> None:
     import json
     import os
     import traceback
+    from contextlib import suppress
     from pathlib import Path
+
+    from qtpy import QtWidgets
 
     def labels(actions):
         return [action.text().replace("&", "").strip() for action in actions]
@@ -19,15 +22,17 @@ def _run_probe() -> None:
         "repeated AYON menu installation remains idempotent",
         "expected AYON menu actions are available",
         "Workfile Builder submenu actions are available",
+        "safe AYON host-tool windows open successfully in Katana UI",
     ]
     coverage_gaps = [
-        "Menu action dialogs are enumerated but not interactively exercised.",
+        "Scene-mutating menu actions are not triggered by UI smoke.",
     ]
     payload = {
         "success": False,
         "checks": checks,
         "coverage_gaps": coverage_gaps,
     }
+    tool_windows = []
     try:
         from ayon_katana.api import menu as ayon_menu
 
@@ -104,6 +109,48 @@ def _run_probe() -> None:
                 f"Workfile Builder menu is missing expected actions: {missing_builder}"
             )
 
+        from ayon_core.tools.utils import host_tools
+
+        def show_tool(name, callback):
+            widget = callback()
+            if widget is None:
+                raise RuntimeError(f"AYON UI tool returned no widget: {name}")
+            QtWidgets.QApplication.processEvents()
+            if not widget.isVisible():
+                raise RuntimeError(f"AYON UI tool is not visible after show: {name}")
+            tool_windows.append(widget)
+            return type(widget).__name__
+
+        tool_classes = {
+            "publisher_create": show_tool(
+                "publisher create",
+                lambda: host_tools.show_publisher(parent=main_window, tab="create"),
+            ),
+            "loader": show_tool(
+                "loader",
+                lambda: host_tools.show_loader(parent=main_window, use_context=True),
+            ),
+            "scene_inventory": show_tool(
+                "scene inventory",
+                lambda: host_tools.show_scene_inventory(parent=main_window),
+            ),
+            "workfiles": show_tool(
+                "workfiles",
+                lambda: host_tools.show_workfiles(parent=main_window),
+            ),
+            "experimental_tools": show_tool(
+                "experimental tools",
+                lambda: host_tools.show_experimental_tools_dialog(parent=main_window),
+            ),
+        }
+        publisher_publish = host_tools.show_publisher(parent=main_window, tab="publish")
+        if publisher_publish is None:
+            raise RuntimeError("AYON Publisher returned no widget for publish tab.")
+        QtWidgets.QApplication.processEvents()
+        if not publisher_publish.isVisible():
+            raise RuntimeError("AYON Publisher is not visible on publish tab.")
+        tool_classes["publisher_publish"] = type(publisher_publish).__name__
+
         payload.update(
             {
                 "success": True,
@@ -114,6 +161,7 @@ def _run_probe() -> None:
                     "second_install": bool(second_install),
                     "menu_labels": menu_labels,
                     "builder_labels": builder_labels,
+                    "tool_classes": tool_classes,
                 },
             }
         )
@@ -126,6 +174,10 @@ def _run_probe() -> None:
             }
         )
     finally:
+        for widget in reversed(tool_windows):
+            with suppress(RuntimeError):
+                widget.close()
+        QtWidgets.QApplication.processEvents()
         result_path.parent.mkdir(parents=True, exist_ok=True)
         result_path.write_text(
             json.dumps(payload, indent=2, sort_keys=True),

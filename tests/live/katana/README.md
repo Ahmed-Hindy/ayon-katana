@@ -1,8 +1,9 @@
 # Live Katana tests — BETA/WIP
 
-These tests run inside **real headless Katana** using the AYON Applications launch
-environment. They exist to verify host/API behavior that unit-test mocks cannot
-reliably represent.
+These tests run inside **real Katana** using the AYON Applications launch
+environment. Most suites use headless `--script` processes; the explicit `ui`
+suite launches the real Katana interface to verify startup/menu behavior that
+headless tests cannot represent.
 
 This framework is currently **BETA/WIP and intended for local developer use**.
 It is not a required pull-request CI gate.
@@ -11,7 +12,7 @@ It is not a required pull-request CI gate.
 
 - AYON Launcher/Console connected to the target AYON server;
 - the Katana application variants configured in the AYON Applications addon;
-- valid local Katana licenses;
+- valid local Katana licenses, including an Interactive license for `ui`;
 - a real AYON project/folder/task context that is valid for those applications;
 - renderer plugins only if renderer-dependent coverage is desired.
 
@@ -67,8 +68,12 @@ Available suites:
 - `render`: save a disposable workfile copy and render one real frame through
   `ExtractLocalRender`; reports a coverage gap when the launch scene has no
   usable render instance or renderer;
+- `ui`: launch the real Katana UI, verify AYON's deferred startup lifecycle
+  installed exactly one AYON menu, verify repeated installation is idempotent,
+  and validate the expected menu and Workfile Builder submenu actions. The
+  disposable UI process is terminated by the harness after its result is written;
 - `automated`: run `native`, `integration`, `acceptance`, and `render`; this is
-  the broad self-hosted headless acceptance mode;
+  the broad portable/headless acceptance mode and intentionally excludes `ui`;
 - `existing`: read-only compatibility against a supplied workfile;
 - `all`: run every suite, including `existing` (therefore requires `-Workfile`).
 
@@ -121,8 +126,10 @@ as failures; being manual and non-required is what keeps this beta job
 non-blocking.
 
 The public workflow exposes `native`, `integration`, `acceptance`, `render`, and
-the combined `automated` mode. It can also run the pre-provisioned Rocky Linux
-Katana host probe on the same Windows runner through Docker. The `existing`
+the combined `automated` mode. A separate `windows_ui` switch runs the real
+Katana UI/menu suite on both configured Windows applications. The workflow can
+also run the pre-provisioned Rocky Linux Katana host probe on the same Windows
+runner through Docker. The `existing`
 workfile suite is local-only because workfile paths and scene metadata can be
 studio-sensitive. GitHub uploads only `public-summary.json`; raw AYON/Katana
 logs, per-process results, tracebacks, observations, and local paths remain on

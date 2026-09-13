@@ -34,9 +34,10 @@ way". Add or extend a live contract instead.
 
 ## Live Katana tests — BETA/WIP
 
-The tracked live suite is under `tests/live/katana/`. It launches real headless
-Katana through the AYON Applications environment and injects the current checkout
-before any installed AYON Katana addon. `pytest` explicitly excludes `tests/live`,
+The tracked live suite is under `tests/live/katana/`. It launches real Katana
+through the AYON Applications environment and injects the current checkout before
+any installed AYON Katana addon. Most suites are headless; `ui` launches the real
+interface. `pytest` explicitly excludes `tests/live`,
 so adding future `test_*.py` live scripts cannot accidentally consume a Katana
 license during the normal test job.
 
@@ -44,7 +45,7 @@ This suite is currently **BETA/WIP and local-first**. It is not a required pull
 request gate. Use `tests/live/katana/run-local.ps1` from PowerShell; see
 `tests/live/katana/README.md` for setup and commands.
 
-The live suite has six scopes:
+The live suite has seven scopes:
 
 - `native`: Foundry/Katana API contracts only;
 - `integration`: real AYON host, Creator/CreateContext, Pyblish and transactional
@@ -53,8 +54,10 @@ The live suite has six scopes:
   Builder, discovery and Deadline-metadata workflows;
 - `render`: one real local frame through the production render extractor using a
   disposable workfile copy;
+- `ui`: real interactive startup, deferred AYON menu lifecycle, duplicate-menu
+  prevention, and expected menu/submenu structure;
 - `automated`: `native` + `integration` + `acceptance` + `render`, intended to
-  replace most repetitive manual headless acceptance;
+  replace most repetitive portable/headless acceptance; `ui` stays separate;
 - `existing`: read-only compatibility against an explicitly supplied `.katana`
   workfile.
 
@@ -76,9 +79,10 @@ result in review notes.
 
 The manual GitHub Actions live workflow is intentionally marked BETA/WIP. It is a
 self-hosted-runner entry point, not a required status check. It exposes `native`,
-`integration`, `acceptance`, `render`, and `automated` on Windows and can run the
-same selected suite through official Rocky Linux AYON/Katana 9 acceptance;
-existing-workfile compatibility remains local-only.
+`integration`, `acceptance`, `render`, and `automated` on Windows, runs `ui`
+separately when `windows_ui` is enabled, and can run the same selected headless
+suite through official Rocky Linux AYON/Katana 9 acceptance; existing-workfile
+compatibility remains local-only.
 Workflow failures remain visible as failures, while the absence of automatic PR
 triggers and required-check configuration keeps the beta workflow non-blocking.
 Only a sanitized public summary is uploaded from a self-hosted run. A unit guard

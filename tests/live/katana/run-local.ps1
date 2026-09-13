@@ -8,7 +8,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string] $Task,
 
-    [ValidateSet("native", "integration", "acceptance", "render", "automated", "existing", "all")]
+    [ValidateSet("native", "integration", "acceptance", "render", "ui", "automated", "existing", "all")]
     [string] $Suite = "native",
 
     [string] $Applications = "katana/9.0v1,katana/8.0v1",

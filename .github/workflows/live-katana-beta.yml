@@ -24,6 +24,11 @@ on:
         required: true
         type: string
         default: "katana/9.0v1,katana/8.0v1"
+      windows_ui:
+        description: "Also run real Windows Katana UI/menu acceptance"
+        required: true
+        type: boolean
+        default: true
       linux_probe:
         description: "Also run the pre-provisioned Rocky Linux Katana host probe"
         required: true
@@ -96,6 +101,22 @@ jobs:
             -PublicOutput `
             -Output $env:AYON_KATANA_LIVE_OUTPUT
 
+      - name: Run Windows Katana UI/menu acceptance
+        if: ${{ inputs.windows_ui }}
+        shell: pwsh
+        run: |
+          & .\tests\live\katana\run-local.ps1 `
+            -AyonConsole $env:AYON_CONSOLE `
+            -Project $env:AYON_KATANA_LIVE_PROJECT `
+            -Folder $env:AYON_KATANA_LIVE_FOLDER `
+            -Task $env:AYON_KATANA_LIVE_TASK `
+            -Applications $env:AYON_KATANA_LIVE_APPLICATIONS `
+            -Suite ui `
+            -AyonVariant staging `
+            -QuietHostOutput `
+            -PublicOutput `
+            -Output "${{ github.workspace }}\.artifacts\live-katana-ui"
+
       - name: Run Rocky Linux Katana host probe
         if: ${{ inputs.linux_probe }}
         shell: pwsh
@@ -142,6 +163,7 @@ jobs:
           name: live-katana-beta-${{ github.run_id }}
           path: |
             .artifacts/live-katana/public-summary.json
+            .artifacts/live-katana-ui/public-summary.json
             .artifacts/live-katana-linux/public-summary.json
           if-no-files-found: warn
           retention-days: 7

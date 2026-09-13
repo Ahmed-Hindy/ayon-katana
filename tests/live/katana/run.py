@@ -11,13 +11,16 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import time
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_APPLICATIONS = ("katana/9.0v1", "katana/8.0v1")
-VALID_SUITES = ("native", "integration", "acceptance", "render", "existing")
+VALID_SUITES = ("native", "integration", "acceptance", "render", "ui", "existing")
 AUTOMATED_SUITES = ("native", "integration", "acceptance", "render")
+UI_PROBE_RESOURCE = Path(__file__).with_name("ui_probe_resource")
 
 
 @dataclass(frozen=True)
@@ -242,6 +245,89 @@ def _run_suite(
     return result
 
 
+def _run_ui_suite(
+    executable: Path,
+    application_name: str,
+    base_env: dict[str, str],
+    config: LiveConfig,
+) -> dict:
+    """Run real Katana UI startup/menu acceptance in one disposable process."""
+    version_name = application_name.split("/", 1)[-1]
+    output_dir = config.output_root / version_name / "ui"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    result_path = output_dir / "result.json"
+    log_path = output_dir / "katana.log"
+    result_path.unlink(missing_ok=True)
+
+    env = prepare_environment(
+        base_env,
+        application_name,
+        output_dir,
+        result_path,
+        config.existing_workfile,
+    )
+    env["KATANA_RESOURCES"] = os.pathsep.join(
+        item
+        for item in (str(UI_PROBE_RESOURCE), env.get("KATANA_RESOURCES", ""))
+        if item
+    )
+
+    process = None
+    try:
+        with log_path.open("w", encoding="utf-8") as log:
+            process = subprocess.Popen(
+                [str(executable)],
+                cwd=REPOSITORY_ROOT,
+                env=env,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+            )
+            deadline = time.monotonic() + config.timeout_seconds
+            while not result_path.is_file():
+                return_code = process.poll()
+                if return_code is not None:
+                    return {
+                        "success": False,
+                        "error_type": "MissingResult",
+                        "error": (
+                            "Katana UI exited without writing a live-test result "
+                            "payload."
+                        ),
+                        "return_code": return_code,
+                        "log": log_path.relative_to(config.output_root).as_posix(),
+                    }
+                if time.monotonic() >= deadline:
+                    return {
+                        "success": False,
+                        "error_type": "TimeoutExpired",
+                        "error": (
+                            "Katana UI live suite exceeded "
+                            f"{config.timeout_seconds} seconds."
+                        ),
+                        "return_code": None,
+                        "log": log_path.relative_to(config.output_root).as_posix(),
+                    }
+                time.sleep(0.25)
+
+            try:
+                result = json.loads(result_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                result = {
+                    "success": False,
+                    "error_type": type(exc).__name__,
+                    "error": f"Could not read live-test result payload: {exc}",
+                }
+    finally:
+        if process is not None and process.poll() is None:
+            process.terminate()
+            with suppress(subprocess.TimeoutExpired):
+                process.wait(timeout=10)
+
+    result["return_code"] = 0 if result.get("success") else 1
+    result["log"] = log_path.relative_to(config.output_root).as_posix()
+    return result
+
+
 def _application_managers():
     """Return the configured AYON Applications addon and manager."""
     from ayon_core.addon import AddonsManager
@@ -339,13 +425,21 @@ def main() -> None:
                 continue
 
             for suite in config.suites:
-                result = _run_suite(
-                    executable,
-                    application_name,
-                    suite,
-                    base_env,
-                    config,
-                )
+                if suite == "ui":
+                    result = _run_ui_suite(
+                        executable,
+                        application_name,
+                        base_env,
+                        config,
+                    )
+                else:
+                    result = _run_suite(
+                        executable,
+                        application_name,
+                        suite,
+                        base_env,
+                        config,
+                    )
                 application_results[suite] = result
                 if result.get("return_code") != 0 or not result.get("success"):
                     failed = True

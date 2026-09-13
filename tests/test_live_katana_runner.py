@@ -154,6 +154,8 @@ def test_live_runner_automated_suite_excludes_private_workfile_case(
     config = runner.load_config()
 
     assert config.suites == ("native", "integration", "acceptance", "render")
+    assert "ui" in runner.VALID_SUITES
+    assert "ui" not in runner.AUTOMATED_SUITES
     assert config.existing_workfile is None
     assert runner._suite_script("acceptance").name == "acceptance_smoke.py"
     assert runner._suite_script("render").name == "render_smoke.py"
@@ -236,6 +238,65 @@ def test_live_runner_timeout_is_structured_failure(
     assert "exceeded 1 seconds" in result["error"]
 
 
+def test_live_runner_ui_suite_terminates_disposable_process_after_result(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """UI smoke consumes its result and terminates the disposable Katana UI."""
+    runner = _load_runner()
+    config = runner.LiveConfig(
+        project_name="ProjectA",
+        folder_path="/assets/hero",
+        task_name="lookdev",
+        applications=("katana/9.0v1",),
+        suites=("ui",),
+        output_root=tmp_path,
+        existing_workfile=None,
+        timeout_seconds=30,
+    )
+
+    class FakeProcess:
+        def __init__(self):
+            self.terminated = False
+
+        def poll(self):
+            return 0 if self.terminated else None
+
+        def terminate(self):
+            self.terminated = True
+
+        def wait(self, timeout):
+            assert timeout == 10
+            return 0
+
+    captured = {}
+
+    def fake_popen(_command, **kwargs):
+        process = FakeProcess()
+        captured["process"] = process
+        captured["env"] = kwargs["env"]
+        Path(kwargs["env"]["AYON_KATANA_LIVE_RESULT"]).write_text(
+            '{"success": true, "checks": ["ui"], "coverage_gaps": []}',
+            encoding="utf-8",
+        )
+        return process
+
+    monkeypatch.setattr(runner.subprocess, "Popen", fake_popen)
+    result = runner._run_ui_suite(
+        Path("katanaBin.exe"),
+        "katana/9.0v1",
+        {},
+        config,
+    )
+
+    assert result["success"] is True
+    assert result["return_code"] == 0
+    assert captured["process"].terminated is True
+    assert captured["env"]["KATANA_RESOURCES"].split(os.pathsep)[0] == str(
+        runner.UI_PROBE_RESOURCE
+    )
+
+
 def test_public_summary_strips_sensitive_live_details() -> None:
     """Public CI artifacts omit local paths, observations, and tracebacks."""
     runner = _load_runner()
@@ -282,6 +343,9 @@ def test_beta_live_workflow_stays_manual_local_first_and_private() -> None:
     assert "public-summary.json" in workflow
     assert "- acceptance" in workflow
     assert "- automated" in workflow
+    assert "windows_ui:" in workflow
+    assert "-Suite ui" in workflow
+    assert ".artifacts/live-katana-ui/public-summary.json" in workflow
     assert "linux_probe:" in workflow
     assert "run-linux-probe.ps1" in workflow
     assert "inputs.linux_ayon" in workflow

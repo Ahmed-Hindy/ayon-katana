@@ -85,6 +85,19 @@ def _run_probe() -> None:
         if missing:
             raise RuntimeError(f"AYON menu is missing expected actions: {missing}")
 
+        version_up_action = next(
+            action
+            for action in menu.actions()
+            if action.text().replace("&", "").strip() == "Version Up Workfile"
+        )
+        version_up_expected = ayon_menu._version_up_enabled()
+        version_up_enabled = bool(version_up_action.isEnabled())
+        if version_up_enabled != version_up_expected:
+            raise RuntimeError(
+                "Version Up Workfile enabled state does not match AYON settings."
+            )
+        checks.append("Version Up Workfile menu state matches AYON project settings")
+
         builder_action = next(
             action
             for action in menu.actions()
@@ -192,6 +205,7 @@ def _run_probe() -> None:
                     "second_install": bool(second_install),
                     "menu_labels": menu_labels,
                     "builder_labels": builder_labels,
+                    "version_up_enabled": version_up_enabled,
                     "tool_classes": tool_classes,
                     "viewer_capture": viewer_capture,
                 },

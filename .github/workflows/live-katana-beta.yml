@@ -1,0 +1,171 @@
+name: 🧪 [BETA/WIP] Live Katana (self-hosted)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_beta:
+        description: "Run the beta live Katana suite on a configured self-hosted runner"
+        required: true
+        type: boolean
+        default: false
+      suite:
+        description: "Live suite"
+        required: true
+        type: choice
+        options:
+          - native
+          - integration
+          - acceptance
+          - render
+          - automated
+        default: automated
+      applications:
+        description: "Comma-separated AYON application names"
+        required: true
+        type: string
+        default: "katana/9.0v1,katana/8.0v1"
+      windows_ui:
+        description: "Also run real Windows Katana UI/menu acceptance"
+        required: true
+        type: boolean
+        default: true
+      linux_probe:
+        description: "Also run the pre-provisioned Rocky Linux Katana host probe"
+        required: true
+        type: boolean
+        default: true
+      linux_ayon:
+        description: "Also run the official Rocky Linux AYON/Katana suite"
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  live-katana-beta:
+    name: BETA/WIP live Katana
+    if: ${{ inputs.confirm_beta }}
+    runs-on:
+      - self-hosted
+      - Windows
+      - ayon-katana-live
+    timeout-minutes: 30
+    env:
+      AYON_CONSOLE: ${{ vars.AYON_CONSOLE }}
+      AYON_KATANA_LIVE_PROJECT: ${{ vars.AYON_KATANA_LIVE_PROJECT }}
+      AYON_KATANA_LIVE_FOLDER: ${{ vars.AYON_KATANA_LIVE_FOLDER }}
+      AYON_KATANA_LIVE_TASK: ${{ vars.AYON_KATANA_LIVE_TASK }}
+      AYON_KATANA_LIVE_APPLICATIONS: ${{ inputs.applications }}
+      AYON_KATANA_LIVE_SUITE: ${{ inputs.suite }}
+      AYON_KATANA_LIVE_OUTPUT: ${{ github.workspace }}\.artifacts\live-katana
+      AYON_KATANA_LINUX_IMAGE: ${{ vars.AYON_KATANA_LINUX_IMAGE }}
+      AYON_KATANA_LINUX_AYON_IMAGE: ${{ vars.AYON_KATANA_LINUX_AYON_IMAGE }}
+      FOUNDRY_LICENSE_SERVER: ${{ vars.FOUNDRY_LICENSE_SERVER }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate beta runner configuration
+        shell: pwsh
+        run: |
+          if (-not $env:AYON_CONSOLE) {
+            throw "Repository variable AYON_CONSOLE is not configured."
+          }
+          if (-not (Test-Path -LiteralPath $env:AYON_CONSOLE)) {
+            throw "AYON_CONSOLE does not exist on this runner: $env:AYON_CONSOLE"
+          }
+          foreach ($name in @(
+            "AYON_KATANA_LIVE_PROJECT",
+            "AYON_KATANA_LIVE_FOLDER",
+            "AYON_KATANA_LIVE_TASK"
+          )) {
+            if (-not [Environment]::GetEnvironmentVariable($name)) {
+              throw "Required repository variable is not configured: $name"
+            }
+          }
+      - name: Run BETA/WIP live Katana suite
+        shell: pwsh
+        run: |
+          & .\tests\live\katana\run-local.ps1 `
+            -AyonConsole $env:AYON_CONSOLE `
+            -Project $env:AYON_KATANA_LIVE_PROJECT `
+            -Folder $env:AYON_KATANA_LIVE_FOLDER `
+            -Task $env:AYON_KATANA_LIVE_TASK `
+            -Applications $env:AYON_KATANA_LIVE_APPLICATIONS `
+            -Suite $env:AYON_KATANA_LIVE_SUITE `
+            -AyonVariant staging `
+            -QuietHostOutput `
+            -PublicOutput `
+            -Output $env:AYON_KATANA_LIVE_OUTPUT
+
+      - name: Run Windows Katana UI/menu acceptance
+        if: ${{ inputs.windows_ui }}
+        shell: pwsh
+        run: |
+          & .\tests\live\katana\run-local.ps1 `
+            -AyonConsole $env:AYON_CONSOLE `
+            -Project $env:AYON_KATANA_LIVE_PROJECT `
+            -Folder $env:AYON_KATANA_LIVE_FOLDER `
+            -Task $env:AYON_KATANA_LIVE_TASK `
+            -Applications $env:AYON_KATANA_LIVE_APPLICATIONS `
+            -Suite ui `
+            -AyonVariant staging `
+            -QuietHostOutput `
+            -PublicOutput `
+            -Output "${{ github.workspace }}\.artifacts\live-katana-ui"
+
+      - name: Run Rocky Linux Katana host probe
+        if: ${{ inputs.linux_probe }}
+        shell: pwsh
+        run: |
+          $image = $env:AYON_KATANA_LINUX_IMAGE
+          if (-not $image) {
+            $image = "ayon-katana/katana9-rocky:9.0v1"
+          }
+          $licenseServer = $env:FOUNDRY_LICENSE_SERVER
+          if (-not $licenseServer) {
+            $licenseServer = "4101@host.docker.internal"
+          }
+          & .\tests\live\katana\run-linux-probe.ps1 `
+            -Image $image `
+            -LicenseServer $licenseServer
+
+      - name: Run Rocky Linux AYON/Katana suite
+        if: ${{ inputs.linux_ayon }}
+        shell: pwsh
+        run: |
+          $image = $env:AYON_KATANA_LINUX_AYON_IMAGE
+          if (-not $image) {
+            $image = "ayon-katana/katana9-rocky:ayon-1.6.0"
+          }
+          $licenseServer = $env:FOUNDRY_LICENSE_SERVER
+          if (-not $licenseServer) {
+            $licenseServer = "4101@host.docker.internal"
+          }
+          & .\tests\live\katana\run-linux-ayon.ps1 `
+            -Project $env:AYON_KATANA_LIVE_PROJECT `
+            -Folder $env:AYON_KATANA_LIVE_FOLDER `
+            -Task $env:AYON_KATANA_LIVE_TASK `
+            -Application "katana/9.0v1" `
+            -Suite $env:AYON_KATANA_LIVE_SUITE `
+            -Image $image `
+            -LicenseServer $licenseServer `
+            -Output "${{ github.workspace }}\.artifacts\live-katana-linux" `
+            -AyonConsole $env:AYON_CONSOLE
+
+      - name: Upload live Katana artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-katana-beta-${{ github.run_id }}
+          path: |
+            .artifacts/live-katana/public-summary.json
+            .artifacts/live-katana-ui/public-summary.json
+            .artifacts/live-katana-linux/public-summary.json
+          if-no-files-found: warn
+          retention-days: 7

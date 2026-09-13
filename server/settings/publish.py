@@ -65,6 +65,10 @@ class PublishPluginsModel(BaseSettingsModel):
         default_factory=EnabledPluginModel,
         title="Collect ImageWrite",
     )
+    CollectReview: EnabledPluginModel = SettingsField(
+        default_factory=EnabledPluginModel,
+        title="Collect Scene Review",
+    )
     ValidateWorkfileSaved: OptionalPluginModel = SettingsField(
         default_factory=OptionalPluginModel,
         title="Validate Workfile Saved",
@@ -146,6 +150,10 @@ class PublishPluginsModel(BaseSettingsModel):
         default_factory=OptionalPluginModel,
         title="Validate ImageWrite",
     )
+    ValidateReview: OptionalPluginModel = SettingsField(
+        default_factory=OptionalPluginModel,
+        title="Validate Scene Review",
+    )
     FinalizeUsdPublish: EnabledPluginModel = SettingsField(
         default_factory=EnabledPluginModel,
         title="Finalize USD",
@@ -157,6 +165,10 @@ class PublishPluginsModel(BaseSettingsModel):
     ExtractWorkfileThumbnail: OptionalPluginModel = SettingsField(
         default_factory=OptionalPluginModel,
         title="Extract Workfile Thumbnail",
+    )
+    ExtractReviewCapture: EnabledPluginModel = SettingsField(
+        default_factory=EnabledPluginModel,
+        title="Extract Scene Review Capture",
     )
     ExtractWorkfile: EnabledPluginModel = SettingsField(
         default_factory=EnabledPluginModel,

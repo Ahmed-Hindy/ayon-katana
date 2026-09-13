@@ -106,6 +106,7 @@ DEFAULT_VALUES = {
             "default_frame_padding": 4,
             "default_review": False,
         },
+        "CreateReview": {"enabled": True},
     },
     "load": {
         "UsdSublayerLoader": {
@@ -135,6 +136,7 @@ DEFAULT_VALUES = {
         "CollectNodegraphDependencies": {"enabled": True},
         "CollectUsdLayer": {"enabled": True},
         "CollectImage": {"enabled": True},
+        "CollectReview": {"enabled": True},
         "ValidateWorkfileSaved": {
             "enabled": True,
             "optional": False,
@@ -231,6 +233,11 @@ DEFAULT_VALUES = {
             "optional": False,
             "active": True,
         },
+        "ValidateReview": {
+            "enabled": True,
+            "optional": False,
+            "active": True,
+        },
         "FinalizeUsdPublish": {"enabled": True},
         "IncrementCurrentFile": {
             "enabled": True,
@@ -242,6 +249,7 @@ DEFAULT_VALUES = {
             "optional": True,
             "active": True,
         },
+        "ExtractReviewCapture": {"enabled": True},
         "ExtractWorkfile": {"enabled": True},
         "ExtractLocalRender": {"enabled": True},
         "ExtractNodegraph": {"enabled": True},

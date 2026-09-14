@@ -16,7 +16,7 @@ class ExtractReviewCapture(plugin.KatanaExtractorPlugin):
 
     label = "Extract Scene Review Capture"
     order = pyblish.api.ExtractorOrder - 0.1
-    families = ["review", "katana.review"]
+    families = ["katana.review"]
     frame_padding = 4
 
     def process(self, instance) -> None:

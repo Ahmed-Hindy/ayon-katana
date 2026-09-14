@@ -62,7 +62,7 @@ class CollectReview(plugin.KatanaInstancePlugin):
 
     label = "Collect Scene Review"
     order = pyblish.api.CollectorOrder + 0.410
-    families = ["review", "katana.review"]
+    families = ["katana.review"]
 
     def process(self, instance) -> None:
         """Normalize Scene Review data for capture and AYON Core review output."""

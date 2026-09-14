@@ -149,6 +149,7 @@ def _collector(monkeypatch, project_range=(1, 2)):
 def test_collect_review_normalizes_task_range_handles_and_fps(monkeypatch) -> None:
     """Normalize task ranges, handles, FPS, and review families."""
     module = _collector(monkeypatch)
+    assert module.CollectReview.families == ["katana.review"]
     instance = types.SimpleNamespace(
         data={
             "taskEntity": {
@@ -260,6 +261,7 @@ def test_review_extractor_emits_core_compatible_representation(
         "ayon_katana.plugins.publish.extract_review_capture",
         "client/ayon_katana/plugins/publish/extract_review_capture.py",
     )
+    assert module.ExtractReviewCapture.families == ["katana.review"]
     instance = types.SimpleNamespace(
         data={
             "productName": "reviewMain",
@@ -345,6 +347,7 @@ def test_review_validator_requires_positive_fps_and_visible_viewer(monkeypatch) 
         "ayon_katana.plugins.publish.validate_review",
         "client/ayon_katana/plugins/publish/validate_review.py",
     )
+    assert module.ValidateReview.families == ["katana.review"]
     instance = types.SimpleNamespace(
         data={
             "frameStartHandle": 1001,

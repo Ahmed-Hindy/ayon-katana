@@ -19,7 +19,7 @@ class ValidateReview(
 
     label = "Validate Scene Review"
     order = pyblish.api.ValidatorOrder
-    families = ["review", "katana.review"]
+    families = ["katana.review"]
     optional = False
 
     def process(self, instance) -> None:

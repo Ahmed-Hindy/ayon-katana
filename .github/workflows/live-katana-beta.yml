@@ -51,7 +51,7 @@ jobs:
       - self-hosted
       - Windows
       - ayon-katana-live
-    timeout-minutes: 90
+    timeout-minutes: 120
     env:
       AYON_CONSOLE: ${{ vars.AYON_CONSOLE }}
       AYON_KATANA_LIVE_PROJECT: ${{ vars.AYON_KATANA_LIVE_PROJECT }}

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import tempfile
 from contextlib import suppress
+from pathlib import Path
 from typing import Any, Optional
 
 MAX_THUMBNAIL_DIMENSION = 1024
@@ -66,25 +67,29 @@ def select_viewer_widget() -> tuple[Optional[Any], str]:
     return None, "multiple visible Viewer tabs are ambiguous"
 
 
-def capture_viewer_thumbnail(
+def capture_viewer_image(
     viewer_widget: Any,
-    max_dimension: int = MAX_THUMBNAIL_DIMENSION,
+    output_path: os.PathLike[str] | str,
+    *,
+    max_dimension: Optional[int] = None,
 ) -> str:
-    """Capture a Viewer widget to a temporary PNG.
+    """Capture a Viewer widget directly to a PNG path.
 
     Args:
         viewer_widget: Katana Viewer Qt widget.
-        max_dimension: Maximum output width or height in pixels.
+        output_path: Destination PNG path.
+        max_dimension: Optional maximum width or height. ``None`` preserves
+            the native Viewer widget dimensions.
 
     Returns:
-        Path to the temporary PNG.
+        Normalized destination path.
 
     Raises:
         RuntimeError: The widget cannot be captured or the PNG cannot be saved.
-        ValueError: ``max_dimension`` is not positive.
+        ValueError: ``max_dimension`` is not positive when supplied.
     """
-    if max_dimension < 1:
-        raise ValueError("Thumbnail maximum dimension must be positive.")
+    if max_dimension is not None and max_dimension < 1:
+        raise ValueError("Viewer capture maximum dimension must be positive.")
 
     try:
         pixmap = viewer_widget.grab()
@@ -98,7 +103,7 @@ def capture_viewer_thumbnail(
     if width < 1 or height < 1:
         raise RuntimeError("Katana Viewer capture has invalid dimensions.")
 
-    if max(width, height) > max_dimension:
+    if max_dimension is not None and max(width, height) > max_dimension:
         try:
             from qtpy import QtCore
 
@@ -109,23 +114,46 @@ def capture_viewer_thumbnail(
                 QtCore.Qt.SmoothTransformation,
             )
         except Exception as exc:
-            raise RuntimeError("Failed to scale the Katana Viewer thumbnail.") from exc
+            raise RuntimeError("Failed to scale the Katana Viewer capture.") from exc
         if pixmap is None or pixmap.isNull():
-            raise RuntimeError("Katana Viewer thumbnail scaling returned no image.")
+            raise RuntimeError("Katana Viewer capture scaling returned no image.")
 
+    destination = Path(output_path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        saved = pixmap.save(str(destination), "PNG")
+    except Exception as exc:
+        with suppress(OSError):
+            destination.unlink()
+        raise RuntimeError("Qt could not save the Viewer capture.") from exc
+    if not saved:
+        with suppress(OSError):
+            destination.unlink()
+        raise RuntimeError("Qt could not save the Viewer capture.")
+    return str(destination)
+
+
+def capture_viewer_thumbnail(
+    viewer_widget: Any,
+    max_dimension: int = MAX_THUMBNAIL_DIMENSION,
+) -> str:
+    """Capture a Viewer widget to a temporary PNG thumbnail."""
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as stream:
         output_path = stream.name
     try:
-        if not pixmap.save(output_path, "PNG"):
-            raise RuntimeError("Qt could not save the Viewer thumbnail.")
+        return capture_viewer_image(
+            viewer_widget,
+            output_path,
+            max_dimension=max_dimension,
+        )
     except Exception:
         with suppress(OSError):
             os.remove(output_path)
         raise
-    return output_path
 
 
 def _get_focus_widget() -> Optional[Any]:
+    """Return the current Qt focus widget when one is available."""
     try:
         from qtpy import QtWidgets
 
@@ -138,6 +166,7 @@ def _get_focus_widget() -> Optional[Any]:
 
 
 def _is_visible(widget: Any) -> bool:
+    """Return whether a candidate Viewer widget reports itself visible."""
     try:
         return bool(widget.isVisible())
     except Exception:
@@ -145,6 +174,7 @@ def _is_visible(widget: Any) -> bool:
 
 
 def _contains_focus(widget: Any, focus_widget: Optional[Any]) -> bool:
+    """Return whether ``widget`` is or contains the current focus widget."""
     if focus_widget is None:
         return False
     if focus_widget is widget:

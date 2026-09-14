@@ -179,3 +179,7 @@ class CreatePluginsModel(BaseSettingsModel):
         default_factory=CreateImageModel,
         title="Create Image",
     )
+    CreateReview: EnabledPluginModel = SettingsField(
+        default_factory=EnabledPluginModel,
+        title="Create Scene Review",
+    )

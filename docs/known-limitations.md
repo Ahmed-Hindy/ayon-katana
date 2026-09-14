@@ -49,8 +49,10 @@ only features that map to supported Katana workflows.
   the exported stage contains the promised semantic content.
 - USD farm export is not implemented; local native USD export is the supported
   path.
-- Viewport review-sequence capture is not implemented. ImageWrite review output
-  and still workfile thumbnails are supported instead.
+- Scene Review can capture one unambiguous visible Katana Viewer to a PNG image
+  sequence for AYON review processing. Linux interactive Viewer capture remains
+  unverified. ImageWrite review output and still workfile thumbnails remain
+  supported as separate paths.
 
 ## Renderer and farm scope
 

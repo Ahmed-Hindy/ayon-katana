@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import pyblish.api
 
 from ayon_katana.api import plugin, render
@@ -50,8 +52,8 @@ def _instance_fps(instance) -> float:
         fps = float(value)
     except (TypeError, ValueError) as exc:
         raise RuntimeError("Scene Review requires a valid AYON task FPS.") from exc
-    if fps <= 0:
-        raise RuntimeError("Scene Review requires a positive AYON task FPS.")
+    if not math.isfinite(fps) or fps <= 0:
+        raise RuntimeError("Scene Review requires a finite positive AYON task FPS.")
     return fps
 
 

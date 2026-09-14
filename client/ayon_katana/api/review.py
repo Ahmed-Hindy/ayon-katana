@@ -61,6 +61,16 @@ def capture_viewer_sequence(
     """
     if frame_padding < 1:
         raise ValueError("Review frame padding must be greater than zero.")
+    if (
+        not product_name
+        or product_name in {".", ".."}
+        or "/" in product_name
+        or "\\" in product_name
+        or Path(product_name).is_absolute()
+    ):
+        raise ValueError(
+            "Review product name must be a single non-empty filename component."
+        )
     frames = frame_numbers(frame_start, frame_end, frame_step)
 
     from Katana import NodegraphAPI

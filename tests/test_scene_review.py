@@ -14,6 +14,7 @@ ROOT = Path(__file__).parents[1]
 
 
 def _load(monkeypatch, name: str, path: str):
+    """Load a repository module under a controlled test module name."""
     spec = importlib.util.spec_from_file_location(name, ROOT / path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -23,6 +24,7 @@ def _load(monkeypatch, name: str, path: str):
 
 
 def _api(monkeypatch, **members):
+    """Install a minimal mocked ``ayon_katana.api`` package."""
     package = types.ModuleType("ayon_katana")
     package.__path__ = []
     api = types.ModuleType("ayon_katana.api")
@@ -36,6 +38,7 @@ def _api(monkeypatch, **members):
 
 
 def _pyblish(monkeypatch):
+    """Install the Pyblish order constants required by plugin imports."""
     api = types.ModuleType("pyblish.api")
     api.CollectorOrder = 0.0
     api.ValidatorOrder = 1.0
@@ -47,6 +50,7 @@ def _pyblish(monkeypatch):
 
 
 def _capture_runtime(monkeypatch, current=42.0):
+    """Install minimal Katana and Qt frame-control runtime stubs."""
     times = []
 
     class NodegraphAPI:
@@ -54,10 +58,12 @@ def _capture_runtime(monkeypatch, current=42.0):
 
         @classmethod
         def GetCurrentTime(cls):
+            """Return the mocked current Katana frame."""
             return cls.value
 
         @classmethod
         def SetCurrentTime(cls, value):
+            """Set and record the mocked current Katana frame."""
             cls.value = value
             times.append(value)
 
@@ -78,9 +84,11 @@ def _capture_runtime(monkeypatch, current=42.0):
 def test_review_sequence_restores_frame_and_cleans_partial_failure(
     monkeypatch, tmp_path
 ) -> None:
+    """Restore the original frame and remove partial output on failure."""
     thumbnail = types.ModuleType("ayon_katana.api.thumbnail")
 
     def capture(_widget, output_path):
+        """Write one fake PNG and fail on the second frame."""
         path = Path(output_path)
         if path.name.endswith("1002.png"):
             raise RuntimeError("capture failed")
@@ -103,7 +111,26 @@ def test_review_sequence_restores_frame_and_cleans_partial_failure(
     assert module.frame_numbers(7, 9, 1) == (7, 8, 9)
 
 
+def test_review_sequence_rejects_unsafe_product_names(monkeypatch, tmp_path) -> None:
+    """Reject product names that can escape the review staging directory."""
+    thumbnail = types.ModuleType("ayon_katana.api.thumbnail")
+    thumbnail.capture_viewer_image = lambda *_args, **_kwargs: pytest.fail(
+        "capture should not run for an unsafe product name"
+    )
+    _api(monkeypatch, thumbnail=thumbnail)
+    module = _load(
+        monkeypatch, "ayon_katana.api.review", "client/ayon_katana/api/review.py"
+    )
+
+    for product_name in ("", ".", "..", "../escape", "..\\escape", "/escape"):
+        with pytest.raises(ValueError, match="single non-empty filename component"):
+            module.capture_viewer_sequence(
+                object(), tmp_path, product_name, 1001, 1001, 1
+            )
+
+
 def _collector(monkeypatch, project_range=(1, 2)):
+    """Load the Scene Review collector with lightweight host stubs."""
     _pyblish(monkeypatch)
 
     class KatanaInstancePlugin:
@@ -120,6 +147,7 @@ def _collector(monkeypatch, project_range=(1, 2)):
 
 
 def test_collect_review_normalizes_task_range_handles_and_fps(monkeypatch) -> None:
+    """Normalize task ranges, handles, FPS, and review families."""
     module = _collector(monkeypatch)
     instance = types.SimpleNamespace(
         data={
@@ -148,6 +176,7 @@ def test_collect_review_normalizes_task_range_handles_and_fps(monkeypatch) -> No
 
 
 def test_collect_review_project_fallback_still_requires_fps(monkeypatch) -> None:
+    """Use the project range fallback without weakening FPS requirements."""
     module = _collector(monkeypatch, (10, 12))
     instance = types.SimpleNamespace(
         data={"families": []}, context=types.SimpleNamespace(data={"fps": 24})
@@ -163,10 +192,20 @@ def test_collect_review_project_fallback_still_requires_fps(monkeypatch) -> None
     with pytest.raises(RuntimeError, match="requires a valid AYON task FPS"):
         module.CollectReview().process(missing_fps)
 
+    for fps in (float("nan"), float("inf"), float("-inf"), 0, -1):
+        invalid_fps = types.SimpleNamespace(
+            data={"families": []}, context=types.SimpleNamespace(data={"fps": fps})
+        )
+        with pytest.raises(RuntimeError, match="finite positive AYON task FPS"):
+            module.CollectReview().process(invalid_fps)
+
 
 def test_review_creator_marks_review_product(monkeypatch) -> None:
+    """Mark created Scene Review instances for AYON review processing."""
+
     class KatanaCreator:
         def create(self, _product_name, instance_data, _pre_create_data):
+            """Return the created instance data for assertions."""
             return instance_data
 
     _api(monkeypatch, plugin=types.SimpleNamespace(KatanaCreator=KatanaCreator))
@@ -183,15 +222,18 @@ def test_review_creator_marks_review_product(monkeypatch) -> None:
 def test_review_extractor_emits_core_compatible_representation(
     monkeypatch, tmp_path
 ) -> None:
+    """Emit a review-tagged PNG representation with validated metadata."""
     _pyblish(monkeypatch)
 
     class KatanaExtractorPlugin:
         def staging_dir(self, _instance):
+            """Return the temporary extraction directory."""
             return str(tmp_path)
 
     captured = {}
 
     def capture(*args, **kwargs):
+        """Record capture arguments and return representative frame names."""
         captured["args"] = args
         return ["reviewMain.1001.png", "reviewMain.1002.png"]
 
@@ -239,9 +281,25 @@ def test_review_extractor_emits_core_compatible_representation(
         "reviewMain.1002.png",
     ]
     assert representation["stagingDir"] == str(tmp_path)
+    assert representation["fps"] == 25.0
+
+    captured.clear()
+    invalid_instance = types.SimpleNamespace(
+        data={
+            "productName": "reviewMain",
+            "frameStartHandle": 1001,
+            "frameEndHandle": 1002,
+            "byFrameStep": 1,
+            "fps": float("nan"),
+        }
+    )
+    with pytest.raises(RuntimeError, match="finite positive AYON task FPS"):
+        extractor.process(invalid_instance)
+    assert captured == {}
 
 
 def test_review_validator_requires_positive_fps_and_visible_viewer(monkeypatch) -> None:
+    """Reject invalid FPS metadata and missing visible Viewer widgets."""
     _pyblish(monkeypatch)
 
     class KatanaInstancePlugin:
@@ -250,10 +308,12 @@ def test_review_validator_requires_positive_fps_and_visible_viewer(monkeypatch) 
     class OptionalMixin:
         @staticmethod
         def is_active(_data):
+            """Keep the optional validator active in the test runtime."""
             return True
 
     class ValidationError(RuntimeError):
         def __init__(self, message, *, title=None):
+            """Store the validation title alongside the message."""
             super().__init__(message)
             self.title = title
 
@@ -296,9 +356,10 @@ def test_review_validator_requires_positive_fps_and_visible_viewer(monkeypatch) 
 
     module.ValidateReview().process(instance)
 
-    instance.data["fps"] = 0
-    with pytest.raises(ValidationError, match="positive"):
-        module.ValidateReview().process(instance)
+    for fps in (0, -1, float("nan"), float("inf"), float("-inf")):
+        instance.data["fps"] = fps
+        with pytest.raises(ValidationError, match="finite positive"):
+            module.ValidateReview().process(instance)
 
     instance.data["fps"] = 25
     module.thumbnail.select_viewer_widget = lambda: (None, "no Viewer tab is available")
@@ -307,6 +368,7 @@ def test_review_validator_requires_positive_fps_and_visible_viewer(monkeypatch) 
 
 
 def test_scene_review_server_models_register_all_plugins() -> None:
+    """Register all Scene Review plugins in the server settings models."""
     create_source = (ROOT / "server/settings/create.py").read_text(encoding="utf-8")
     publish_source = (ROOT / "server/settings/publish.py").read_text(encoding="utf-8")
     assert "CreateReview: EnabledPluginModel" in create_source
@@ -316,6 +378,7 @@ def test_scene_review_server_models_register_all_plugins() -> None:
 
 
 def test_scene_review_server_defaults_are_enabled() -> None:
+    """Enable the Scene Review plugin defaults in server settings."""
     tree = ast.parse((ROOT / "server/settings/main.py").read_text(encoding="utf-8"))
     assignment = next(
         node

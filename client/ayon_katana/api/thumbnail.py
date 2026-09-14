@@ -153,6 +153,7 @@ def capture_viewer_thumbnail(
 
 
 def _get_focus_widget() -> Optional[Any]:
+    """Return the current Qt focus widget when one is available."""
     try:
         from qtpy import QtWidgets
 
@@ -165,6 +166,7 @@ def _get_focus_widget() -> Optional[Any]:
 
 
 def _is_visible(widget: Any) -> bool:
+    """Return whether a candidate Viewer widget reports itself visible."""
     try:
         return bool(widget.isVisible())
     except Exception:
@@ -172,6 +174,7 @@ def _is_visible(widget: Any) -> bool:
 
 
 def _contains_focus(widget: Any, focus_widget: Optional[Any]) -> bool:
+    """Return whether ``widget`` is or contains the current focus widget."""
     if focus_widget is None:
         return False
     if focus_widget is widget:

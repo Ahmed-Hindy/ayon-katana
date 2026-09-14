@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import pyblish.api
 from ayon_core.pipeline import OptionalPyblishPluginMixin
 from ayon_core.pipeline.publish import PublishValidationError
@@ -44,9 +46,9 @@ class ValidateReview(
                 "Scene Review requires a valid AYON task FPS.",
                 title="Scene Review FPS missing",
             ) from exc
-        if fps <= 0:
+        if not math.isfinite(fps) or fps <= 0:
             raise PublishValidationError(
-                "Scene Review requires a positive AYON task FPS.",
+                "Scene Review requires a finite positive AYON task FPS.",
                 title="Scene Review FPS invalid",
             )
 

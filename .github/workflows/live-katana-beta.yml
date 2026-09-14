@@ -51,7 +51,7 @@ jobs:
       - self-hosted
       - Windows
       - ayon-katana-live
-    timeout-minutes: 30
+    timeout-minutes: 120
     env:
       AYON_CONSOLE: ${{ vars.AYON_CONSOLE }}
       AYON_KATANA_LIVE_PROJECT: ${{ vars.AYON_KATANA_LIVE_PROJECT }}
@@ -89,6 +89,7 @@ jobs:
             }
           }
       - name: Run BETA/WIP live Katana suite
+        timeout-minutes: 40
         shell: pwsh
         run: |
           & .\tests\live\katana\run-local.ps1 `
@@ -104,7 +105,8 @@ jobs:
             -Output $env:AYON_KATANA_LIVE_OUTPUT
 
       - name: Run Windows Katana UI/menu acceptance
-        if: ${{ inputs.windows_ui }}
+        if: ${{ !cancelled() && inputs.windows_ui }}
+        timeout-minutes: 12
         shell: pwsh
         run: |
           & .\tests\live\katana\run-local.ps1 `
@@ -120,7 +122,8 @@ jobs:
             -Output "${{ github.workspace }}\.artifacts\live-katana-ui"
 
       - name: Run Rocky Linux Katana host probe
-        if: ${{ inputs.linux_probe }}
+        if: ${{ !cancelled() && inputs.linux_probe }}
+        timeout-minutes: 10
         shell: pwsh
         run: |
           $image = $env:AYON_KATANA_LINUX_IMAGE
@@ -136,7 +139,8 @@ jobs:
             -LicenseServer $licenseServer
 
       - name: Run Rocky Linux AYON/Katana suite
-        if: ${{ inputs.linux_ayon }}
+        if: ${{ !cancelled() && inputs.linux_ayon }}
+        timeout-minutes: 25
         shell: pwsh
         run: |
           $image = $env:AYON_KATANA_LINUX_AYON_IMAGE

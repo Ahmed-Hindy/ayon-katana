@@ -130,6 +130,10 @@ class PublishPluginsModel(BaseSettingsModel):
         default_factory=OptionalPluginModel,
         title="Validate USD Layer",
     )
+    ValidateUsdCameraContent: OptionalPluginModel = SettingsField(
+        default_factory=OptionalPluginModel,
+        title="Validate USD Camera Content",
+    )
     ValidateUsdAssetContributionDefaultPrim: OptionalPluginModel = SettingsField(
         default_factory=OptionalPluginModel,
         title="Validate USD Asset Contribution Default Prim",

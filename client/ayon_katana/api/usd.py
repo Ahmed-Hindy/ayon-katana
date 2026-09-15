@@ -132,6 +132,36 @@ def get_extracted_usd_layer_path(instance_data: dict[str, Any]) -> Path:
     return Path(staging_dir) / str(files)
 
 
+def open_extracted_usd_stage(instance_data: dict[str, Any]) -> Any:
+    """Open the single extracted USD representation as a composed stage.
+
+    Args:
+        instance_data: AYON publish instance data containing one USD representation.
+
+    Returns:
+        Opened ``Usd.Stage``.
+
+    Raises:
+        ValueError: Representation metadata does not resolve to one USD layer.
+        RuntimeError: USD cannot open the extracted layer as a stage.
+    """
+    from pxr import Tf, Usd
+
+    layer_path = get_extracted_usd_layer_path(instance_data)
+    try:
+        stage = Usd.Stage.Open(layer_path.as_posix())
+    except Tf.ErrorException as exc:
+        raise RuntimeError(f"Failed to open extracted USD stage: {layer_path}") from exc
+    if stage is None:
+        raise RuntimeError(f"Failed to open extracted USD stage: {layer_path}")
+    return stage
+
+
+def collect_schema_prim_paths(stage: Any, schema: Any) -> list[str]:
+    """Return sorted prim paths matching one concrete or base USD schema."""
+    return sorted(str(prim.GetPath()) for prim in stage.Traverse() if prim.IsA(schema))
+
+
 def _rehydrate_usd_layer_export(node: Any) -> None:
     """Restore transient state omitted when Katana reopens the supertool.
 

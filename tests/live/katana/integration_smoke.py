@@ -27,6 +27,9 @@ from ayon_katana.plugins.publish.collect_usd_layer import CollectUsdLayer
 from ayon_katana.plugins.publish.extract_usd_layer import ExtractUsdLayer
 from ayon_katana.plugins.publish.validate_image import ValidateImage
 from ayon_katana.plugins.publish.validate_render_camera import ValidateRenderCamera
+from ayon_katana.plugins.publish.validate_usd_camera_content import (
+    ValidateUsdCameraContent,
+)
 from ayon_katana.plugins.publish.validate_usd_layer import ValidateUsdLayer
 
 OUT = Path(os.environ["AYON_KATANA_LIVE_OUT"]).resolve()
@@ -144,6 +147,7 @@ def main() -> None:
         assert {
             "io.ayon.creators.katana.image",
             "io.ayon.creators.katana.usd_layer",
+            "io.ayon.creators.katana.usd_camera",
             "io.ayon.creators.katana.render",
         } <= identifiers
 
@@ -230,8 +234,113 @@ def main() -> None:
         representation = usd_item.data["representations"][0]
         extracted_path = Path(representation["stagingDir"]) / representation["files"]
         assert extracted_path.is_file()
+
+        original_product_base_type = usd_item.data.get("productBaseType")
+        usd_item.data["productBaseType"] = "camera"
+        try:
+            ValidateUsdCameraContent().process(usd_item)
+        except PublishValidationError as exc:
+            assert "does not contain a composed Camera" in str(exc)
+        else:
+            raise AssertionError(
+                "Generic USD content unexpectedly passed semantic camera validation."
+            )
+        finally:
+            usd_item.data["productBaseType"] = original_product_base_type
+
+        camera_source = NodegraphAPI.CreateNode("UsdCamera", NodegraphAPI.GetRootNode())
+        camera_source.setName("AYON_Live_UsdCameraSource")
+        camera_source.getParameter("primPath").setValue("/LiveCamera", 0.0)
+        assert usd.is_native_usd_node(camera_source)
+        camera_entry = create_context.create(
+            "io.ayon.creators.katana.usd_camera",
+            "LiveCamera",
+            pre_create_data={
+                "use_selection": False,
+                "usd_format": "usda",
+                "time_samples": "Current Frame",
+                "samples_per_frame": 1.0,
+                "export_method": "Keep Composition Arcs",
+            },
+        )
+        camera_node = camera_entry.transient_data["node"]
+        camera_source.getOutputPort("out").connect(camera_node.getInputPort("in"))
+        camera_item = publish_instance(publish, "usdCameraLive", camera_entry)
+        CollectUsdLayer().process(camera_item)
+        ValidateUsdLayer().process(camera_item)
+        camera_staging = OUT / "usd-camera-extract"
+        camera_extractor = ExtractUsdLayer()
+        camera_extractor.staging_dir = lambda _instance: str(camera_staging)
+        camera_extractor.process(camera_item)
+        camera_representation = camera_item.data["representations"][0]
+        camera_extracted_path = (
+            Path(camera_representation["stagingDir"]) / camera_representation["files"]
+        )
+        assert camera_extracted_path.is_file()
+        ValidateUsdCameraContent().process(camera_item)
+
+        from pxr import Usd
+
+        referenced_camera_staging = OUT / "usd-camera-reference"
+        referenced_camera_staging.mkdir(parents=True, exist_ok=True)
+        referenced_camera_path = referenced_camera_staging / "referenced-camera.usda"
+        referenced_camera_stage = Usd.Stage.CreateNew(referenced_camera_path.as_posix())
+        referenced_camera_prim = referenced_camera_stage.OverridePrim(
+            "/ReferencedCamera"
+        )
+        assert referenced_camera_prim.GetReferences().AddReference(
+            camera_extracted_path.as_posix(),
+            "/LiveCamera",
+        )
+        referenced_camera_stage.GetRootLayer().Save()
+        referenced_camera_item = publish.create_instance("usdCameraReferenceLive")
+        referenced_camera_item.data.update(
+            productBaseType="camera",
+            families=["usd", "katana.usd"],
+            representations=[
+                {
+                    "name": "usd",
+                    "ext": "usda",
+                    "files": referenced_camera_path.name,
+                    "stagingDir": str(referenced_camera_staging),
+                }
+            ],
+        )
+        ValidateUsdCameraContent().process(referenced_camera_item)
+
+        malformed_camera_staging = OUT / "usd-camera-malformed"
+        malformed_camera_staging.mkdir(parents=True, exist_ok=True)
+        malformed_camera_path = malformed_camera_staging / "malformed-camera.usda"
+        malformed_camera_path.write_text(
+            "#usda 1.0\nthis is not valid USD\n",
+            encoding="utf-8",
+        )
+        malformed_camera_item = publish.create_instance("usdCameraMalformedLive")
+        malformed_camera_item.data.update(
+            productBaseType="camera",
+            families=["usd", "katana.usd"],
+            representations=[
+                {
+                    "name": "usd",
+                    "ext": "usda",
+                    "files": malformed_camera_path.name,
+                    "stagingDir": str(malformed_camera_staging),
+                }
+            ],
+        )
+        try:
+            ValidateUsdCameraContent().process(malformed_camera_item)
+        except PublishValidationError as exc:
+            assert "Failed to inspect exported USD camera content" in str(exc)
+        else:
+            raise AssertionError("Malformed USD camera stage unexpectedly validated.")
+
         result["checks"].append(
             "real Image and USD creators collect/validate; USD extracts"
+        )
+        result["checks"].append(
+            "semantic USD camera validation accepts direct and referenced Camera "
+            "content, rejects generic USD, and normalizes malformed-stage errors"
         )
 
         renderer_names = render.get_registered_renderers()

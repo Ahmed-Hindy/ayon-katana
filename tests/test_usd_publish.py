@@ -208,6 +208,33 @@ class FakeSdfLayer:
         return object() if path in self.prim_paths else None
 
 
+class FakeUsdPrim:
+    """Composed USD prim with schema membership."""
+
+    def __init__(self, path: str, schemas=()) -> None:
+        self.path = path
+        self.schemas = set(schemas)
+
+    def IsA(self, schema) -> bool:
+        """Return whether this prim matches a schema."""
+        return schema in self.schemas
+
+    def GetPath(self) -> str:
+        """Return the composed prim path."""
+        return self.path
+
+
+class FakeUsdStage:
+    """Composed USD stage used by semantic-content validation tests."""
+
+    def __init__(self, prims=()) -> None:
+        self.prims = list(prims)
+
+    def Traverse(self) -> list[FakeUsdPrim]:
+        """Return composed prims in traversal order."""
+        return list(self.prims)
+
+
 def _load_module(monkeypatch, name: str, path: Path):
     """Load one source file under a controlled module name."""
     spec = importlib.util.spec_from_file_location(name, path)
@@ -316,6 +343,37 @@ def _load_contribution_validator(monkeypatch, layer: FakeSdfLayer | None):
         / "plugins"
         / "publish"
         / "validate_usd_asset_contribution_default_prim.py",
+    )
+
+
+def _load_camera_content_validator(monkeypatch, stage: FakeUsdStage | None):
+    """Load semantic camera validation with a controlled composed USD stage."""
+    usd = types.ModuleType("pxr.Usd")
+    usd.Stage = types.SimpleNamespace(Open=lambda _path: stage)
+    usd_geom = types.ModuleType("pxr.UsdGeom")
+    usd_geom.Camera = object()
+    tf = types.ModuleType("pxr.Tf")
+    tf.ErrorException = RuntimeError
+    pxr = types.ModuleType("pxr")
+    pxr.Tf = tf
+    pxr.Usd = usd
+    pxr.UsdGeom = usd_geom
+    monkeypatch.setitem(sys.modules, "pxr", pxr)
+    monkeypatch.setitem(sys.modules, "pxr.Tf", tf)
+    monkeypatch.setitem(sys.modules, "pxr.Usd", usd)
+    monkeypatch.setitem(sys.modules, "pxr.UsdGeom", usd_geom)
+    return (
+        _load_module(
+            monkeypatch,
+            "ayon_katana.plugins.publish.validate_usd_camera_content",
+            ROOT
+            / "client"
+            / "ayon_katana"
+            / "plugins"
+            / "publish"
+            / "validate_usd_camera_content.py",
+        ),
+        usd_geom,
     )
 
 
@@ -737,6 +795,142 @@ def test_validator_rejects_connected_geolib_source(monkeypatch) -> None:
         )
 
 
+def _semantic_usd_instance(
+    tmp_path: Path,
+    *,
+    product_base_type: str = "camera",
+):
+    """Return one extracted semantic USD publish instance."""
+    return types.SimpleNamespace(
+        data={
+            "productBaseType": product_base_type,
+            "representations": [
+                {
+                    "name": "usd",
+                    "ext": "usd",
+                    "files": "semantic.usd",
+                    "stagingDir": str(tmp_path),
+                }
+            ],
+        }
+    )
+
+
+def test_camera_content_validation_skips_other_semantic_products(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """Camera validation does not impose camera semantics on look/layout/assembly."""
+    usd = _load_usd_api(monkeypatch)
+    _install_publish_runtime(monkeypatch, {}, usd)
+    module, _usd_geom = _load_camera_content_validator(monkeypatch, None)
+
+    module.ValidateUsdCameraContent().process(
+        _semantic_usd_instance(tmp_path, product_base_type="layout")
+    )
+
+
+def test_camera_content_validation_requires_composed_camera_prim(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """A semantic camera product cannot publish a stage with no Camera prim."""
+    usd = _load_usd_api(monkeypatch)
+    _install_publish_runtime(monkeypatch, {}, usd)
+    module, _usd_geom = _load_camera_content_validator(
+        monkeypatch,
+        FakeUsdStage([FakeUsdPrim("/World/geo")]),
+    )
+
+    validator = module.ValidateUsdCameraContent()
+    assert validator.order == 2.501
+    assert 2.5 < validator.order < 2.505
+    assert validator.families == ["katana.usd"]
+    assert validator.optional is False
+    with pytest.raises(FakeValidationError, match="does not contain a composed Camera"):
+        validator.process(_semantic_usd_instance(tmp_path))
+
+
+def test_camera_content_validation_accepts_composed_camera_prim(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """A semantic camera product passes when its composed stage contains a Camera."""
+    usd = _load_usd_api(monkeypatch)
+    _install_publish_runtime(monkeypatch, {}, usd)
+    module, usd_geom = _load_camera_content_validator(monkeypatch, None)
+    stage = FakeUsdStage(
+        [
+            FakeUsdPrim("/World/geo"),
+            FakeUsdPrim("/World/cam/main", schemas={usd_geom.Camera}),
+        ]
+    )
+    sys.modules["pxr"].Usd.Stage.Open = lambda _path: stage
+
+    module.ValidateUsdCameraContent().process(_semantic_usd_instance(tmp_path))
+
+
+def test_camera_content_validation_accepts_legacy_product_type(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """Legacy ``usdCamera`` productType metadata keeps semantic validation."""
+    usd = _load_usd_api(monkeypatch)
+    _install_publish_runtime(monkeypatch, {}, usd)
+    module, usd_geom = _load_camera_content_validator(monkeypatch, None)
+    stage = FakeUsdStage([FakeUsdPrim("/World/cam/main", schemas={usd_geom.Camera})])
+    sys.modules["pxr"].Usd.Stage.Open = lambda _path: stage
+    instance = _semantic_usd_instance(tmp_path)
+    instance.data.pop("productBaseType")
+    instance.data["productType"] = "usdCamera"
+
+    module.ValidateUsdCameraContent().process(instance)
+
+
+def test_camera_content_validation_reports_unopenable_stage(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """An unreadable staged camera layer becomes an artist-facing validation error."""
+    usd = _load_usd_api(monkeypatch)
+    _install_publish_runtime(monkeypatch, {}, usd)
+    module, _usd_geom = _load_camera_content_validator(monkeypatch, None)
+
+    with pytest.raises(
+        FakeValidationError,
+        match="Failed to inspect exported USD camera",
+    ):
+        module.ValidateUsdCameraContent().process(_semantic_usd_instance(tmp_path))
+
+
+def test_camera_content_validation_wraps_tf_stage_error(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """Foundry ``Tf.ErrorException`` remains an artist-facing validation failure."""
+    usd = _load_usd_api(monkeypatch)
+    _install_publish_runtime(monkeypatch, {}, usd)
+    module, _usd_geom = _load_camera_content_validator(monkeypatch, None)
+
+    class FakeTfError(Exception):
+        """Stand in for Foundry ``Tf.ErrorException``."""
+
+    def fail_open(_path: str):
+        raise FakeTfError("invalid usda layer")
+
+    sys.modules["pxr"].Tf.ErrorException = FakeTfError
+    sys.modules["pxr"].Usd.Stage.Open = fail_open
+
+    with pytest.raises(
+        FakeValidationError,
+        match="Failed to inspect exported USD camera",
+    ) as exc:
+        module.ValidateUsdCameraContent().process(_semantic_usd_instance(tmp_path))
+
+    assert isinstance(exc.value.__cause__, RuntimeError)
+    assert isinstance(exc.value.__cause__.__cause__, FakeTfError)
+
+
 def test_asset_contribution_validation_skips_when_disabled(
     monkeypatch,
     tmp_path: Path,
@@ -838,6 +1032,11 @@ def test_server_settings_register_usd_creator_and_publish_plugins() -> None:
     }
     assert defaults["publish"]["CollectUsdLayer"] == {"enabled": True}
     assert defaults["publish"]["ValidateUsdLayer"] == {
+        "enabled": True,
+        "optional": False,
+        "active": True,
+    }
+    assert defaults["publish"]["ValidateUsdCameraContent"] == {
         "enabled": True,
         "optional": False,
         "active": True,

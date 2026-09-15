@@ -212,6 +212,11 @@ DEFAULT_VALUES = {
             "optional": False,
             "active": True,
         },
+        "ValidateUsdCameraContent": {
+            "enabled": True,
+            "optional": False,
+            "active": True,
+        },
         "ValidateUsdAssetContributionDefaultPrim": {
             "enabled": True,
             "optional": True,

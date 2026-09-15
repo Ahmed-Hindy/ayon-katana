@@ -45,8 +45,9 @@ only features that map to supported Katana workflows.
   published resource directory and remaps authored asset paths, including UDIM
   texture sets. Remote URIs, missing or ambiguously anchored resources, and
   transfer destination collisions are rejected rather than silently rewritten.
-- Semantic USD creators describe the intended product type but do not yet prove
-  the exported stage contains the promised semantic content.
+- Semantic USD Camera publishing verifies that the exported stage contains at
+  least one composed `Camera` prim. Layout and assembly creators still describe
+  intent without enforcing a universal stage-content predicate.
 - USD farm export is not implemented; local native USD export is the supported
   path.
 - Scene Review can capture one unambiguous visible Katana Viewer to a PNG image

@@ -198,3 +198,124 @@ def test_get_extracted_usd_layer_path_rejects_ambiguous_metadata(
 
     with pytest.raises(ValueError, match=message):
         usd.get_extracted_usd_layer_path(data)
+
+
+def test_open_extracted_usd_stage_uses_resolved_layer_path(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """Composed-stage inspection opens the exact staged USD representation."""
+    usd = _load_usd_api(monkeypatch)
+    opened_paths = []
+    expected_stage = object()
+    pxr_usd = types.ModuleType("pxr.Usd")
+    pxr_usd.Stage = types.SimpleNamespace(
+        Open=lambda path: opened_paths.append(path) or expected_stage
+    )
+    pxr_tf = types.ModuleType("pxr.Tf")
+    pxr_tf.ErrorException = RuntimeError
+    pxr = types.ModuleType("pxr")
+    pxr.Tf = pxr_tf
+    pxr.Usd = pxr_usd
+    monkeypatch.setitem(sys.modules, "pxr", pxr)
+    monkeypatch.setitem(sys.modules, "pxr.Tf", pxr_tf)
+    monkeypatch.setitem(sys.modules, "pxr.Usd", pxr_usd)
+    data = {
+        "representations": [
+            {"ext": "usda", "files": "camera.usda", "stagingDir": str(tmp_path)}
+        ]
+    }
+
+    assert usd.open_extracted_usd_stage(data) is expected_stage
+    assert opened_paths == [(tmp_path / "camera.usda").as_posix()]
+
+
+def test_open_extracted_usd_stage_rejects_unopenable_layer(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """A staged layer that USD cannot open is an explicit inspection failure."""
+    usd = _load_usd_api(monkeypatch)
+    pxr_usd = types.ModuleType("pxr.Usd")
+    pxr_usd.Stage = types.SimpleNamespace(Open=lambda _path: None)
+    pxr_tf = types.ModuleType("pxr.Tf")
+    pxr_tf.ErrorException = RuntimeError
+    pxr = types.ModuleType("pxr")
+    pxr.Tf = pxr_tf
+    pxr.Usd = pxr_usd
+    monkeypatch.setitem(sys.modules, "pxr", pxr)
+    monkeypatch.setitem(sys.modules, "pxr.Tf", pxr_tf)
+    monkeypatch.setitem(sys.modules, "pxr.Usd", pxr_usd)
+    data = {
+        "representations": [
+            {"ext": "usd", "files": "broken.usd", "stagingDir": str(tmp_path)}
+        ]
+    }
+
+    with pytest.raises(RuntimeError, match="Failed to open extracted USD stage"):
+        usd.open_extracted_usd_stage(data)
+
+
+def test_open_extracted_usd_stage_normalizes_tf_error_exception(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """Foundry USD parser failures become stable runtime inspection errors."""
+    usd = _load_usd_api(monkeypatch)
+
+    class FakeTfError(Exception):
+        """Stand in for Foundry ``Tf.ErrorException``."""
+
+    def fail_open(_path: str):
+        raise FakeTfError("invalid usda layer")
+
+    pxr_usd = types.ModuleType("pxr.Usd")
+    pxr_usd.Stage = types.SimpleNamespace(Open=fail_open)
+    pxr_tf = types.ModuleType("pxr.Tf")
+    pxr_tf.ErrorException = FakeTfError
+    pxr = types.ModuleType("pxr")
+    pxr.Tf = pxr_tf
+    pxr.Usd = pxr_usd
+    monkeypatch.setitem(sys.modules, "pxr", pxr)
+    monkeypatch.setitem(sys.modules, "pxr.Tf", pxr_tf)
+    monkeypatch.setitem(sys.modules, "pxr.Usd", pxr_usd)
+    data = {
+        "representations": [
+            {"ext": "usda", "files": "broken.usda", "stagingDir": str(tmp_path)}
+        ]
+    }
+
+    with pytest.raises(RuntimeError, match="Failed to open extracted USD stage") as exc:
+        usd.open_extracted_usd_stage(data)
+
+    assert isinstance(exc.value.__cause__, FakeTfError)
+
+
+def test_collect_schema_prim_paths_returns_sorted_matches(monkeypatch) -> None:
+    """Schema inspection reports only matching composed prim paths, sorted."""
+    usd = _load_usd_api(monkeypatch)
+    schema = object()
+
+    class Prim:
+        def __init__(self, path: str, matches: bool) -> None:
+            self.path = path
+            self.matches = matches
+
+        def IsA(self, candidate) -> bool:
+            return self.matches and candidate is schema
+
+        def GetPath(self) -> str:
+            return self.path
+
+    stage = types.SimpleNamespace(
+        Traverse=lambda: [
+            Prim("/World/cam/z", True),
+            Prim("/World/geo", False),
+            Prim("/World/cam/a", True),
+        ]
+    )
+
+    assert usd.collect_schema_prim_paths(stage, schema) == [
+        "/World/cam/a",
+        "/World/cam/z",
+    ]

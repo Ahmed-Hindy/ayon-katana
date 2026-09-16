@@ -6,7 +6,7 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
-from . import thumbnail
+_VIEWPORT_SYNC_PASSES = 2
 
 
 def frame_numbers(frame_start: int, frame_end: int, frame_step: int) -> tuple[int, ...]:
@@ -32,6 +32,102 @@ def frame_numbers(frame_start: int, frame_end: int, frame_step: int) -> tuple[in
     return tuple(range(frame_start, frame_end + 1, frame_step))
 
 
+def _select_review_viewport(viewer_widget: Any) -> Any:
+    """Return the only visible Katana viewport suitable for review capture."""
+    candidates = []
+    try:
+        delegate_count = int(viewer_widget.getNumberOfViewerDelegates())
+        for delegate_index in range(delegate_count):
+            delegate = viewer_widget.getViewerDelegateByIndex(delegate_index)
+            if delegate is None:
+                continue
+            for viewport in viewer_widget.getViewports(delegate):
+                viewport_widget = viewer_widget.getViewportWidget(viewport, delegate)
+                if viewport_widget is None:
+                    continue
+                if not callable(getattr(viewport_widget, "grabFramebuffer", None)):
+                    continue
+                if not bool(viewport_widget.isVisible()):
+                    continue
+                if (
+                    int(viewport_widget.width()) < 1
+                    or int(viewport_widget.height()) < 1
+                ):
+                    continue
+                candidates.append(viewport_widget)
+    except Exception as exc:
+        raise RuntimeError(
+            "Scene Review cannot inspect Katana Viewer viewports."
+        ) from exc
+
+    if len(candidates) != 1:
+        raise RuntimeError(
+            "Scene Review requires exactly one visible capture viewport; "
+            f"found {len(candidates)}."
+        )
+    return candidates[0]
+
+
+def _synchronize_viewport(viewport_widget: Any) -> None:
+    """Flush Katana updates and synchronously redraw the review viewport."""
+    from Katana import Utils
+    from qtpy import QtWidgets
+
+    application = QtWidgets.QApplication.instance()
+    # One repaint can still show the previous Hydra frame. Katana 8 and 9 both
+    # require a second flush/repaint cycle before review pixels are current.
+    for _ in range(_VIEWPORT_SYNC_PASSES):
+        Utils.EventModule.ProcessAllEvents()
+        viewport_widget.repaint()
+        if application is not None:
+            application.processEvents()
+
+
+def _write_viewport_image(viewport_widget: Any, output_path: Path) -> None:
+    """Write the current Katana viewport framebuffer to ``output_path``."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if output_path.exists():
+        try:
+            output_path.unlink()
+        except OSError as exc:
+            raise RuntimeError(
+                "Katana review viewport cannot replace existing output."
+            ) from exc
+
+    try:
+        image = viewport_widget.grabFramebuffer()
+        saved = (
+            image is not None
+            and not image.isNull()
+            and image.save(str(output_path), "PNG")
+        )
+    except Exception as exc:
+        with suppress(OSError):
+            output_path.unlink()
+        raise RuntimeError("Katana could not capture the review viewport.") from exc
+
+    if not saved:
+        with suppress(OSError):
+            output_path.unlink()
+        raise RuntimeError("Katana review viewport capture produced no image.")
+
+    try:
+        valid_output = output_path.is_file() and output_path.stat().st_size > 0
+    except OSError:
+        valid_output = False
+    if not valid_output:
+        with suppress(OSError):
+            output_path.unlink()
+        raise RuntimeError("Katana review viewport capture produced no image.")
+
+
+def _remove_paths(paths: list[Path]) -> None:
+    """Best-effort removal of partially captured review frames."""
+    for path in paths:
+        with suppress(OSError):
+            path.unlink()
+
+
 def capture_viewer_sequence(
     viewer_widget: Any,
     staging_dir: Path,
@@ -44,11 +140,11 @@ def capture_viewer_sequence(
 ) -> list[str]:
     """Capture the visible Viewer over a frame range as a PNG sequence.
 
-    The active Katana frame is restored even when capture fails. Files created
-    by a failed partial capture are removed before the error is re-raised.
+    The active Katana frame and Viewer presentation are restored even when
+    capture fails. Files from a failed capture are removed before re-raising.
 
     Args:
-        viewer_widget: Selected Katana Viewer Qt widget.
+        viewer_widget: Selected Katana Viewer tab widget.
         staging_dir: Destination directory.
         product_name: Prefix used for captured filenames.
         frame_start: First frame, including handles when desired.
@@ -71,33 +167,36 @@ def capture_viewer_sequence(
         raise ValueError(
             "Review product name must be a single non-empty filename component."
         )
+
     frames = frame_numbers(frame_start, frame_end, frame_step)
+    viewport_widget = _select_review_viewport(viewer_widget)
 
     from Katana import NodegraphAPI
-    from qtpy import QtWidgets
 
     staging_dir.mkdir(parents=True, exist_ok=True)
     original_frame = NodegraphAPI.GetCurrentTime()
     created_paths: list[Path] = []
-    application = QtWidgets.QApplication.instance()
+    capture_failed = False
     try:
         for frame in frames:
             NodegraphAPI.SetCurrentTime(frame)
-            if application is not None:
-                application.processEvents()
+            _synchronize_viewport(viewport_widget)
 
             filename = f"{product_name}.{frame:0{frame_padding}d}.png"
             output_path = staging_dir / filename
-            thumbnail.capture_viewer_image(viewer_widget, output_path)
+            _write_viewport_image(viewport_widget, output_path)
             created_paths.append(output_path)
     except Exception:
-        for path in created_paths:
-            with suppress(OSError):
-                path.unlink()
+        capture_failed = True
+        _remove_paths(created_paths)
         raise
     finally:
-        NodegraphAPI.SetCurrentTime(original_frame)
-        if application is not None:
-            application.processEvents()
+        try:
+            NodegraphAPI.SetCurrentTime(original_frame)
+            _synchronize_viewport(viewport_widget)
+        except Exception:
+            if not capture_failed:
+                _remove_paths(created_paths)
+                raise
 
     return [path.name for path in created_paths]

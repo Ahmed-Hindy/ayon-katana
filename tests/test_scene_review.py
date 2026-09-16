@@ -85,20 +85,25 @@ def test_review_sequence_restores_frame_and_cleans_partial_failure(
     monkeypatch, tmp_path
 ) -> None:
     """Restore the original frame and remove partial output on failure."""
-    thumbnail = types.ModuleType("ayon_katana.api.thumbnail")
-
-    def capture(_widget, output_path):
-        """Write one fake PNG and fail on the second frame."""
-        path = Path(output_path)
-        if path.name.endswith("1002.png"):
-            raise RuntimeError("capture failed")
-        path.write_bytes(b"png")
-        return str(path)
-
-    thumbnail.capture_viewer_image = capture
-    _api(monkeypatch, thumbnail=thumbnail)
     module = _load(
         monkeypatch, "ayon_katana.api.review", "client/ayon_katana/api/review.py"
+    )
+    viewport = object()
+    monkeypatch.setattr(module, "_select_review_viewport", lambda _viewer: viewport)
+
+    def write_image(candidate, output_path):
+        """Write one fake PNG and fail on the second frame."""
+        assert candidate is viewport
+        if output_path.name.endswith("1002.png"):
+            raise RuntimeError("capture failed")
+        output_path.write_bytes(b"png")
+
+    monkeypatch.setattr(module, "_write_viewport_image", write_image)
+    synchronized = []
+    monkeypatch.setattr(
+        module,
+        "_synchronize_viewport",
+        lambda candidate: synchronized.append(candidate),
     )
     nodegraph, times = _capture_runtime(monkeypatch)
 
@@ -108,18 +113,82 @@ def test_review_sequence_restores_frame_and_cleans_partial_failure(
     assert not (tmp_path / "reviewMain.1001.png").exists()
     assert nodegraph.value == 42.0
     assert times == [1001, 1002, 42.0]
+    assert synchronized == [viewport, viewport, viewport]
     assert module.frame_numbers(7, 9, 1) == (7, 8, 9)
+
+
+def test_review_sequence_cleans_output_when_restore_sync_fails(
+    monkeypatch, tmp_path
+) -> None:
+    """A failed Viewer restoration cannot leave completed review PNGs behind."""
+    module = _load(
+        monkeypatch, "ayon_katana.api.review", "client/ayon_katana/api/review.py"
+    )
+    viewport = object()
+    monkeypatch.setattr(module, "_select_review_viewport", lambda _viewer: viewport)
+    monkeypatch.setattr(
+        module,
+        "_write_viewport_image",
+        lambda _candidate, output_path: output_path.write_bytes(b"png"),
+    )
+    sync_count = {"value": 0}
+
+    def synchronize(_candidate):
+        sync_count["value"] += 1
+        if sync_count["value"] == 2:
+            raise RuntimeError("restore sync failed")
+
+    monkeypatch.setattr(module, "_synchronize_viewport", synchronize)
+    nodegraph, _times = _capture_runtime(monkeypatch)
+
+    with pytest.raises(RuntimeError, match="restore sync failed"):
+        module.capture_viewer_sequence(object(), tmp_path, "reviewMain", 1001, 1001, 1)
+
+    assert not (tmp_path / "reviewMain.1001.png").exists()
+    assert nodegraph.value == 42.0
+
+
+def test_review_sequence_cleans_output_when_restore_time_fails(
+    monkeypatch, tmp_path
+) -> None:
+    """A failed timeline restoration cannot leave completed review PNGs behind."""
+    module = _load(
+        monkeypatch, "ayon_katana.api.review", "client/ayon_katana/api/review.py"
+    )
+    viewport = object()
+    monkeypatch.setattr(module, "_select_review_viewport", lambda _viewer: viewport)
+    monkeypatch.setattr(module, "_synchronize_viewport", lambda _candidate: None)
+    monkeypatch.setattr(
+        module,
+        "_write_viewport_image",
+        lambda _candidate, output_path: output_path.write_bytes(b"png"),
+    )
+    nodegraph, _times = _capture_runtime(monkeypatch)
+    set_current_time = nodegraph.SetCurrentTime
+
+    def fail_restore(value):
+        """Reject restoration to the original mocked frame."""
+        if value == 42.0:
+            raise RuntimeError("restore time failed")
+        set_current_time(value)
+
+    monkeypatch.setattr(nodegraph, "SetCurrentTime", fail_restore)
+
+    with pytest.raises(RuntimeError, match="restore time failed"):
+        module.capture_viewer_sequence(object(), tmp_path, "reviewMain", 1001, 1001, 1)
+
+    assert not (tmp_path / "reviewMain.1001.png").exists()
 
 
 def test_review_sequence_rejects_unsafe_product_names(monkeypatch, tmp_path) -> None:
     """Reject product names that can escape the review staging directory."""
-    thumbnail = types.ModuleType("ayon_katana.api.thumbnail")
-    thumbnail.capture_viewer_image = lambda *_args, **_kwargs: pytest.fail(
-        "capture should not run for an unsafe product name"
-    )
-    _api(monkeypatch, thumbnail=thumbnail)
     module = _load(
         monkeypatch, "ayon_katana.api.review", "client/ayon_katana/api/review.py"
+    )
+    monkeypatch.setattr(
+        module,
+        "_select_review_viewport",
+        lambda _viewer: pytest.fail("viewport selection should not run"),
     )
 
     for product_name in ("", ".", "..", "../escape", "..\\escape", "/escape"):
@@ -127,6 +196,179 @@ def test_review_sequence_rejects_unsafe_product_names(monkeypatch, tmp_path) -> 
             module.capture_viewer_sequence(
                 object(), tmp_path, product_name, 1001, 1001, 1
             )
+
+
+def test_review_viewport_requires_one_visible_candidate(monkeypatch) -> None:
+    """Scene Review resolves capture viewports through Katana's Viewer API."""
+    module = _load(
+        monkeypatch, "ayon_katana.api.review", "client/ayon_katana/api/review.py"
+    )
+
+    def candidate(*, visible=True, width=640, height=360):
+        return types.SimpleNamespace(
+            grabFramebuffer=lambda: object(),
+            isVisible=lambda: visible,
+            width=lambda: width,
+            height=lambda: height,
+        )
+
+    delegate = object()
+
+    def viewer_for(viewports):
+        return types.SimpleNamespace(
+            getNumberOfViewerDelegates=lambda: 1,
+            getViewerDelegateByIndex=lambda _index: delegate,
+            getViewports=lambda _delegate: list(viewports),
+            getViewportWidget=lambda viewport, _delegate: viewport,
+        )
+
+    selected = candidate()
+    viewer = viewer_for([candidate(visible=False), candidate(width=0), selected])
+    assert module._select_review_viewport(viewer) is selected
+
+    with pytest.raises(RuntimeError, match="found 0"):
+        module._select_review_viewport(viewer_for([]))
+
+    with pytest.raises(RuntimeError, match="found 2"):
+        module._select_review_viewport(viewer_for([candidate(), candidate()]))
+
+
+def test_review_viewport_sync_uses_two_katana_repaint_passes(monkeypatch) -> None:
+    """Hydra capture flushes Katana and repaints twice before writing the image."""
+    module = _load(
+        monkeypatch, "ayon_katana.api.review", "client/ayon_katana/api/review.py"
+    )
+    events = []
+    katana = types.ModuleType("Katana")
+    katana.Utils = types.SimpleNamespace(
+        EventModule=types.SimpleNamespace(
+            ProcessAllEvents=lambda: events.append("katana")
+        )
+    )
+    monkeypatch.setitem(sys.modules, "Katana", katana)
+    qtwidgets = types.ModuleType("qtpy.QtWidgets")
+    qtwidgets.QApplication = types.SimpleNamespace(
+        instance=lambda: types.SimpleNamespace(
+            processEvents=lambda: events.append("qt")
+        )
+    )
+    qtpy = types.ModuleType("qtpy")
+    qtpy.QtWidgets = qtwidgets
+    monkeypatch.setitem(sys.modules, "qtpy", qtpy)
+    monkeypatch.setitem(sys.modules, "qtpy.QtWidgets", qtwidgets)
+    viewport = types.SimpleNamespace(repaint=lambda: events.append("repaint"))
+
+    module._synchronize_viewport(viewport)
+
+    assert events == [
+        "katana",
+        "repaint",
+        "qt",
+        "katana",
+        "repaint",
+        "qt",
+    ]
+
+
+def test_review_sequence_fails_without_live_viewport(monkeypatch, tmp_path) -> None:
+    """Scene Review fails instead of falling back to generic widget capture."""
+    module = _load(
+        monkeypatch, "ayon_katana.api.review", "client/ayon_katana/api/review.py"
+    )
+
+    def no_viewport(_viewer):
+        raise RuntimeError(
+            "Scene Review requires exactly one visible capture viewport; found 0."
+        )
+
+    monkeypatch.setattr(module, "_select_review_viewport", no_viewport)
+    with pytest.raises(RuntimeError, match="found 0"):
+        module.capture_viewer_sequence(object(), tmp_path, "reviewMain", 1001, 1001, 1)
+
+
+def test_review_viewport_capture_writes_framebuffer(monkeypatch, tmp_path) -> None:
+    """Write the Katana viewport framebuffer directly as PNG."""
+    module = _load(
+        monkeypatch, "ayon_katana.api.review", "client/ayon_katana/api/review.py"
+    )
+
+    class Image:
+        def isNull(self) -> bool:
+            """Return whether the fake image is empty."""
+            return False
+
+        def save(self, path, _format):
+            """Write one fake PNG payload."""
+            Path(path).write_bytes(b"png")
+            return True
+
+    viewport = types.SimpleNamespace(grabFramebuffer=lambda: Image())
+    output = tmp_path / "capture.png"
+    module._write_viewport_image(viewport, output)
+
+    assert output.read_bytes() == b"png"
+
+
+def test_review_viewport_capture_failure_removes_stale_output(
+    monkeypatch, tmp_path
+) -> None:
+    """A failed framebuffer capture cannot leave an older PNG behind."""
+    module = _load(
+        monkeypatch, "ayon_katana.api.review", "client/ayon_katana/api/review.py"
+    )
+    output = tmp_path / "failed.png"
+    output.write_bytes(b"stale")
+    viewport = types.SimpleNamespace(
+        grabFramebuffer=lambda: (_ for _ in ()).throw(RuntimeError("grab failed"))
+    )
+
+    with pytest.raises(RuntimeError, match="could not capture"):
+        module._write_viewport_image(viewport, output)
+
+    assert not output.exists()
+
+
+def test_review_viewport_capture_rejects_unremovable_stale_output(
+    monkeypatch, tmp_path
+) -> None:
+    """Do not accept capture over an existing file that cannot be removed."""
+    module = _load(
+        monkeypatch, "ayon_katana.api.review", "client/ayon_katana/api/review.py"
+    )
+    output = tmp_path / "locked.png"
+    output.write_bytes(b"stale")
+    original_unlink = Path.unlink
+
+    def fail_target_unlink(path, *args, **kwargs):
+        """Simulate a stale capture file that cannot be replaced."""
+        if path == output:
+            raise PermissionError("locked")
+        return original_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", fail_target_unlink)
+    viewport = types.SimpleNamespace(
+        grabFramebuffer=lambda: pytest.fail("capture should not start")
+    )
+
+    with pytest.raises(RuntimeError, match="cannot replace existing output"):
+        module._write_viewport_image(viewport, output)
+
+    assert output.read_bytes() == b"stale"
+
+
+def test_review_viewport_capture_requires_output_file(monkeypatch, tmp_path) -> None:
+    """A silent framebuffer-save failure is reported and cleaned up."""
+    module = _load(
+        monkeypatch, "ayon_katana.api.review", "client/ayon_katana/api/review.py"
+    )
+    image = types.SimpleNamespace(isNull=lambda: False, save=lambda *_args: True)
+    viewport = types.SimpleNamespace(grabFramebuffer=lambda: image)
+    output = tmp_path / "missing.png"
+
+    with pytest.raises(RuntimeError, match="produced no image"):
+        module._write_viewport_image(viewport, output)
+
+    assert not output.exists()
 
 
 def _collector(monkeypatch, project_range=(1, 2)):

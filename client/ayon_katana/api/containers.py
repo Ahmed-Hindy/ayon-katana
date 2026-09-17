@@ -30,8 +30,8 @@ def imprint(node, data: dict[str, Any]) -> None:
     """Write AYON container metadata onto a Katana node.
 
     Args:
-        node: Katana container node.
-        data: Container metadata to store.
+        node (NodegraphAPI.Node): Katana container node.
+        data (dict[str, Any]): Container metadata to store.
     """
     container_data = dict(data)
     container_data.setdefault("schema", _CONTAINER_SCHEMA)
@@ -43,10 +43,11 @@ def parse_container(node) -> Optional[dict[str, Any]]:
     """Parse AYON container metadata from a Katana node.
 
     Args:
-        node: Katana node to inspect.
+        node (NodegraphAPI.Node): Katana node to inspect.
 
     Returns:
-        Parsed container data including transient node information, or ``None``.
+        (dict[str, Any] | None): Parsed container data including transient node
+            information, or ``None``.
     """
     data = lib.read_json_parameter(node, _CONTAINER_PARAMETER)
     if data is None or data.get("id") != AYON_CONTAINER_ID:
@@ -79,13 +80,14 @@ def create_managed_group(
     """Create a loader-owned Group below an AYON container.
 
     Args:
-        container_node: Outer AYON container Group node.
-        name: Name for the managed Group.
-        role: Optional AYON managed-graph role. Use ``None`` for a temporary
-            update candidate until it has replaced the current managed group.
+        container_node (NodegraphAPI.Node): Outer AYON container Group node.
+        name (str): Name for the managed Group.
+        role (str | None): Optional AYON managed-graph role. Use ``None`` for a
+            temporary update candidate until it has replaced the current managed
+            group.
 
     Returns:
-        Created managed Group node.
+        (NodegraphAPI.Node): Created managed Group node.
     """
     managed_group = NodegraphAPI.CreateNode("Group", container_node)
     managed_group.setName(name)
@@ -109,8 +111,10 @@ def disconnect_managed_group_from_user(managed_group, user_group) -> None:
     """Disconnect a managed Group from the artist-editable Group.
 
     Args:
-        managed_group: Loader-owned Group currently feeding the user Group.
-        user_group: Artist-editable Group within the same container.
+        managed_group (NodegraphAPI.Node): Loader-owned Group currently feeding
+            the user Group.
+        user_group (NodegraphAPI.Node): Artist-editable Group within the same
+            container.
 
     Raises:
         RuntimeError: Required graph ports are missing.
@@ -126,8 +130,9 @@ def connect_managed_group_to_user(managed_group, user_group) -> None:
     """Connect a managed Group's output to the artist-editable Group.
 
     Args:
-        managed_group: Loader-owned Group to connect.
-        user_group: Artist-editable Group within the same container.
+        managed_group (NodegraphAPI.Node): Loader-owned Group to connect.
+        user_group (NodegraphAPI.Node): Artist-editable Group within the same
+            container.
 
     Raises:
         RuntimeError: Required graph ports are missing.
@@ -153,14 +158,15 @@ def containerise(
     group while loader updates remain inside ``AYON_MANAGED``.
 
     Args:
-        name: Name of the loaded product.
-        namespace: Namespace under which to host the container.
-        context: Loaded product context information.
-        loader: Name of the loader used to produce the container.
-        parent_node: Optional Katana parent node. Defaults to the root node.
+        name (str): Name of the loaded product.
+        namespace (str): Namespace under which to host the container.
+        context (dict[str, Any]): Loaded product context information.
+        loader (str | None): Name of the loader used to produce the container.
+        parent_node (NodegraphAPI.Node | None): Optional Katana parent node.
+            Defaults to the root node.
 
     Returns:
-        Created Katana container Group.
+        (NodegraphAPI.Node): Created Katana container Group.
     """
     parent_node = parent_node or NodegraphAPI.GetRootNode()
     container_node = None

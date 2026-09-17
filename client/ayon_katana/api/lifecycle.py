@@ -191,7 +191,7 @@ class LifecycleController:
         """Remember AYON Workfiles Save As context until ``taskChanged``.
 
         Args:
-            event: AYON event containing the target workfile context.
+            event (Event): AYON event containing the target workfile context.
         """
         event_data = event.data
         self._pending_workfile_save = {

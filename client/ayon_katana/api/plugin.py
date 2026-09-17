@@ -31,10 +31,10 @@ class KatanaCreatorBase:
         creator identifiers.
 
         Args:
-            shared_data: Shared collection data.
+            shared_data (dict): Shared collection data.
 
         Returns:
-            Shared collection data.
+            (dict): Shared collection data.
         """
         if shared_data.get("katana_cached_instances") is None:
             cache = defaultdict(list)
@@ -51,12 +51,13 @@ class KatanaCreatorBase:
         """Create node representing instance.
 
         Args:
-            node_type: Type of the node.
-            node_name: Name of the new node.
-            parent: Optional parent node. Defaults to the root node.
+            node_type (str): Type of the node.
+            node_name (str): Name of the new node.
+            parent (NodegraphAPI.Node | None): Optional parent node. Defaults to
+                the root node.
 
         Returns:
-            Newly created Katana instance node.
+            (NodegraphAPI.Node): Newly created Katana instance node.
         """
         parent = parent or NodegraphAPI.GetRootNode()
         instance_node = NodegraphAPI.CreateNode(node_type, parent)
@@ -74,7 +75,7 @@ class KatanaCreator(Creator, KatanaCreatorBase):
         """Validate that the product name is unique in the scene.
 
         Args:
-            product_name: Product name to validate.
+            product_name (str): Product name to validate.
 
         Raises:
             CreatorError: A node-backed instance already uses the name.
@@ -138,10 +139,10 @@ class KatanaCreator(Creator, KatanaCreatorBase):
         """Prepare persisted data before wrapping it in ``CreatedInstance``.
 
         Args:
-            instance_data: Raw data read from the Katana node.
+            instance_data (dict): Raw data read from the Katana node.
 
         Returns:
-            Data used for the collected AYON instance.
+            (dict): Data used for the collected AYON instance.
         """
         return instance_data
 

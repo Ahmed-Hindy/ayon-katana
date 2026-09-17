@@ -16,7 +16,7 @@ def imprint(node, data: dict[str, Any]) -> None:
     """Store AYON creator instance data on a Katana node.
 
     Args:
-        node: Katana node representing a publish instance.
+        node (NodegraphAPI.Node): Katana node representing a publish instance.
         data: Serialized ``CreatedInstance`` data.
     """
     instance_data = dict(data)
@@ -28,7 +28,7 @@ def read(node) -> Optional[dict[str, Any]]:
     """Read AYON creator instance data from a Katana node.
 
     Args:
-        node: Katana node to inspect.
+        node (NodegraphAPI.Node): Katana node to inspect.
 
     Returns:
         Parsed instance data, or ``None`` when the node is not an instance.
@@ -43,7 +43,8 @@ def iter_nodes(parent_node=None) -> Iterator:
     """Yield every Katana node recursively below a parent.
 
     Args:
-        parent_node: Parent node. Defaults to Katana's root node.
+        parent_node (NodegraphAPI.Node | None): Parent node. Defaults to Katana's
+            root node.
 
     Yields:
         Katana nodes in depth-first order.

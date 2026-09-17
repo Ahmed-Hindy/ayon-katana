@@ -60,9 +60,6 @@ plugins:
             - ./
             - client/*
             - server/*
-          options:
-            docstring_options:
-              warn_missing_types: false
   - minify:
       minify_html: true
       minify_js: true

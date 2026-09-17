@@ -466,7 +466,7 @@ def configure_output_node(
     """Configure a renderer-neutral file output definition.
 
     Args:
-        output_node: Katana ``RenderOutputDefine`` node.
+        output_node (NodegraphAPI.Node): Katana ``RenderOutputDefine`` node.
         output_name: Render output name.
         output_path: Output path containing Katana ``#`` frame padding.
         extension: File extension without a leading dot.
@@ -582,7 +582,7 @@ def update_render_graph(
     """Synchronize persisted creator data into native Katana render nodes.
 
     Args:
-        instance_node: Outer AYON render instance Group.
+        instance_node (NodegraphAPI.Node): Outer AYON render instance Group.
         product_name: AYON product name.
         output_name: Render output name.
         output_path: Expected output pattern.
@@ -596,7 +596,7 @@ def update_render_graph(
         resolution: Optional named Katana resolution preset.
 
     Returns:
-        Updated native ``Render`` node.
+        (NodegraphAPI.Node): Updated native ``Render`` node.
     """
     settings_node = get_settings_node(instance_node)
     output_node = get_output_node(instance_node)
@@ -645,7 +645,7 @@ def create_render_graph(
     """Create the native Katana nodes owned by a render instance.
 
     Args:
-        instance_node: Outer AYON instance Group.
+        instance_node (NodegraphAPI.Node): Outer AYON instance Group.
         product_name: AYON product name.
         output_name: Render output name.
         output_path: Expected output pattern.
@@ -659,7 +659,7 @@ def create_render_graph(
         resolution: Optional named Katana resolution preset.
 
     Returns:
-        Created native ``Render`` node.
+        (NodegraphAPI.Node): Created native ``Render`` node.
     """
     settings_node = NodegraphAPI.CreateNode("RenderSettings", instance_node)
     settings_node.setName("AYON_RenderSettings")

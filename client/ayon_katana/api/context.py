@@ -21,7 +21,7 @@ def get_current_context_data(host, data: Optional[dict[str, Any]] = None) -> dic
     """Return the current AYON context, optionally updated by event data.
 
     Args:
-        host: Installed AYON Katana host.
+        host (KatanaHost): Installed AYON Katana host.
         data: Optional context fields supplied by an AYON lifecycle event.
 
     Returns:
@@ -53,7 +53,7 @@ def update_embedded_context(
     """Persist the active AYON context in the current Katana project.
 
     Args:
-        host: Installed AYON Katana host.
+        host (KatanaHost): Installed AYON Katana host.
         data: Optional context fields supplied by an AYON lifecycle event.
 
     Returns:
@@ -237,7 +237,7 @@ def apply_context_settings(
     width/height project setting. Neither setting is mutated here.
 
     Args:
-        host: Installed AYON Katana host.
+        host (KatanaHost): Installed AYON Katana host.
         data: Optional context fields supplied by an AYON lifecycle event.
 
     Returns:

@@ -70,5 +70,3 @@ plugins:
       cache_safe: true
   - mike
 
-hooks:
-  - mkdocs_hooks.py

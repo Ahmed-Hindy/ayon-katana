@@ -1,9 +1,10 @@
-site_name: AYON Katana
+site_name: ayon-katana
 repo_url: https://github.com/Ahmed-Hindy/ayon-katana
 
 nav:
   - Home: index.md
   - Known limitations: known-limitations.md
+  - License: license.md
 
 theme:
   name: material
@@ -21,14 +22,45 @@ theme:
   features:
     - navigation.sections
     - navigation.path
+    - navigation.prune
 
 extra:
   version:
     provider: mike
 
+extra_css:
+  - css/custom.css
+
+markdown_extensions:
+  - mdx_gh_links
+  - pymdownx.snippets
+
 plugins:
   - search
   - offline
+  - mkdocs-autoapi:
+      autoapi_dir: ./
+      autoapi_add_nav_entry: Reference
+      autoapi_ignore:
+        - .*
+        - docs/**/*
+        - tests/**/*
+        - tools/**/*
+        - scripts/**/*
+        - stubs/**/*
+        - client/ayon_katana/resources/**/*
+        - .*/**/*
+        - ./*.py
+  - mkdocstrings:
+      handlers:
+        python:
+          paths:
+            - ./
+            - client/*
+            - server/*
+          options:
+            docstring_options:
+              warn_missing_types: false
   - minify:
       minify_html: true
       minify_js: true
@@ -37,3 +69,6 @@ plugins:
         remove_comments: true
       cache_safe: true
   - mike
+
+hooks:
+  - mkdocs_hooks.py

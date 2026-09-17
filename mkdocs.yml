@@ -19,6 +19,8 @@ theme:
       toggle:
         icon: material/weather-night
         name: Switch to dark mode
+  logo: img/ay-symbol-blackw-full.png
+  favicon: img/favicon.ico
   features:
     - navigation.sections
     - navigation.path

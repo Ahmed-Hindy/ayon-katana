@@ -13,6 +13,10 @@ on:
         description: "Set Version Release Tag"
         required: false
 
+concurrency:
+  group: release-${{ github.repository }}
+  cancel-in-progress: false
+
 jobs:
   call-release-trigger:
     uses: ynput/ops-repo-automation/.github/workflows/release_trigger.yml@main

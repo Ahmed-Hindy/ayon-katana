@@ -6,6 +6,9 @@ on:
       - "*"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-mk-docs:
     # FIXME: Update @develop to @main after `ops-repo-automation` release.

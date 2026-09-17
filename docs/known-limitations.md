@@ -1,7 +1,7 @@
 # Known limitations and feature gaps
 
-AYON Katana 0.1.64 focuses on Katana-native production workflows and exposes
-only features that map to supported Katana workflows.
+AYON Katana focuses on Katana-native production workflows and exposes only
+features that map to supported Katana workflows.
 
 ## Platform and host coverage
 

@@ -6,10 +6,12 @@ on:
       - "*"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-mk-docs:
-    # FIXME: Update @develop to @main after `ops-repo-automation` release.
-    uses: ynput/ops-repo-automation/.github/workflows/deploy_mkdocs.yml@develop
+    uses: ynput/ops-repo-automation/.github/workflows/deploy_mkdocs.yml@main
     with:
       repo: ${{ github.repository }}
     secrets:

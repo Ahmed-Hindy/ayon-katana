@@ -3,6 +3,7 @@ repo_url: https://github.com/Ahmed-Hindy/ayon-katana
 
 nav:
   - Home: index.md
+  - Getting started: getting-started.md
   - Known limitations: known-limitations.md
   - License: license.md
 

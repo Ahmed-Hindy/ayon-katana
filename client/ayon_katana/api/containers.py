@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from contextlib import suppress
+from contextlib import contextmanager, suppress
 from typing import Any, Optional
 
 from ayon_core.pipeline import AYON_CONTAINER_ID
@@ -24,6 +24,28 @@ MANAGED_GROUP_NAME = "AYON_MANAGED"
 USER_GROUP_NAME = "USER"
 SOURCE_ROLE = "source"
 _OLD_MANAGED_GROUP_NAME = "AYON_MANAGED_OLD"
+
+
+@contextmanager
+def _rollback_on_error(*rollback_actions):
+    """Run best-effort rollback actions if an operation fails.
+
+    Rollback actions execute in the order supplied. Failures during rollback
+    are suppressed so the original operation error remains authoritative.
+
+    Args:
+        *rollback_actions: Zero-argument callables that restore prior state.
+
+    Yields:
+        None: Control while the transactional operation is running.
+    """
+    try:
+        yield
+    except Exception:
+        for action in rollback_actions:
+            with suppress(Exception):
+                action()
+        raise
 
 
 def imprint(node, data: dict[str, Any]) -> None:

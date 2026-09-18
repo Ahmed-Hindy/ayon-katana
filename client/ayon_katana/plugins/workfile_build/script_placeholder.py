@@ -137,12 +137,12 @@ class KatanaPlaceholderScriptPlugin(KatanaPlaceholderPlugin):
         """Execute trusted administrator Python with placeholder context.
 
         Args:
-            placeholder: Workfile Builder placeholder item.
-            script: Trusted administrator-authored Python source.
-            event: Optional Core depth or finished event.
+            placeholder (PlaceholderItem): Workfile Builder placeholder item.
+            script (str): Trusted administrator-authored Python source.
+            event (Event | None): Optional Core depth or finished event.
 
         Returns:
-            The execution namespace, useful for diagnostics and tests.
+            (dict): The execution namespace, useful for diagnostics and tests.
 
         Warning:
             This method is deliberately unsandboxed. The source can import

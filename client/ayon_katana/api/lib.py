@@ -28,11 +28,11 @@ def ensure_group_parameter(node, parameter_path: str):
     """Create and return a nested Katana group parameter.
 
     Args:
-        node: Katana node that owns the parameter.
+        node (NodegraphAPI.Node): Katana node that owns the parameter.
         parameter_path: Dot-separated group parameter path.
 
     Returns:
-        Katana group parameter.
+        (NodegraphAPI.Parameter): Katana group parameter.
     """
     parameter = node.getParameters()
     if not parameter_path:
@@ -49,12 +49,12 @@ def ensure_string_parameter(node, parameter_path: str, default_value: str = ""):
     """Create and return a nested Katana string parameter.
 
     Args:
-        node: Katana node that owns the parameter.
+        node (NodegraphAPI.Node): Katana node that owns the parameter.
         parameter_path: Dot-separated parameter path.
         default_value: Value used when creating the parameter.
 
     Returns:
-        Katana string parameter.
+        (NodegraphAPI.Parameter): Katana string parameter.
     """
     parent_path, _, leaf_name = parameter_path.rpartition(".")
     parent = ensure_group_parameter(node, parent_path)
@@ -68,12 +68,12 @@ def ensure_number_parameter(node, parameter_path: str, default_value: float = 0.
     """Create and return a nested Katana number parameter.
 
     Args:
-        node: Katana node that owns the parameter.
+        node (NodegraphAPI.Node): Katana node that owns the parameter.
         parameter_path: Dot-separated parameter path.
         default_value: Value used when creating the parameter.
 
     Returns:
-        Katana number parameter.
+        (NodegraphAPI.Parameter): Katana number parameter.
     """
     parent_path, _, leaf_name = parameter_path.rpartition(".")
     parent = ensure_group_parameter(node, parent_path)
@@ -123,7 +123,7 @@ def write_json_parameter(
     """Serialize dictionary metadata into a Katana string parameter.
 
     Args:
-        node: Katana node that owns the parameter.
+        node (NodegraphAPI.Node): Katana node that owns the parameter.
         parameter_path: Dot-separated parameter path.
         data: Dictionary to serialize.
         skip_unchanged: Avoid dirtying the scene when content is unchanged.

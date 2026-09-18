@@ -165,14 +165,14 @@ def containerise(name, namespace, context, loader=None, parent_node=None):
     products.
 
     Args:
-        name: Name of the loaded product.
-        namespace: Namespace under which to host the container.
-        context: Loaded product context information.
-        loader: Name of the loader used to produce the container.
-        parent_node: Optional Katana parent node.
+        name (str): Name of the loaded product.
+        namespace (str): Namespace under which to host the container.
+        context (dict): Loaded product context information.
+        loader (str | None): Name of the loader used to produce the container.
+        parent_node (NodegraphAPI.Node | None): Optional Katana parent node.
 
     Returns:
-        Created Katana container Group.
+        (NodegraphAPI.Node): Created Katana container Group.
     """
     return containers.containerise(
         name,

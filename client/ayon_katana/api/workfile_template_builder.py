@@ -43,10 +43,10 @@ class KatanaTemplateBuilder(AbstractTemplateBuilder):
         """Import a Katana template into the current project.
 
         Args:
-            path: Template ``.katana`` path.
+            path (str): Template ``.katana`` path.
 
         Returns:
-            ``True`` when Katana imported the template.
+            (bool): ``True`` when Katana imported the template.
         """
         try:
             compat.import_katana_file(path, float_nodes=False)
@@ -138,7 +138,7 @@ class KatanaPlaceholderPlugin(PlaceholderPlugin):
         """Remove placeholder semantics while keeping its graph Group.
 
         Args:
-            placeholder_node: Placeholder Group to consume.
+            placeholder_node (NodegraphAPI.Node): Placeholder Group to consume.
         """
         lib.set_string_parameter(placeholder_node, _PLACEHOLDER_PARAMETER, "")
         name = placeholder_node.getName()
@@ -154,10 +154,10 @@ class KatanaPlaceholderPlugin(PlaceholderPlugin):
         """Return the Merge node combining loaded placeholder products.
 
         Args:
-            placeholder_node: Placeholder Group.
+            placeholder_node (NodegraphAPI.Node): Placeholder Group.
 
         Returns:
-            Native Katana Merge node.
+            (NodegraphAPI.Node): Native Katana Merge node.
         """
         for child in placeholder_node.getChildren():
             role = lib.get_string_parameter(child, _PLACEHOLDER_ROLE_PARAMETER)
@@ -178,8 +178,9 @@ class KatanaPlaceholderPlugin(PlaceholderPlugin):
         """Move a loaded container into a placeholder and connect its output.
 
         Args:
-            placeholder_node: Destination placeholder Group.
-            container_node: AYON container Group returned by a loader.
+            placeholder_node (NodegraphAPI.Node): Destination placeholder Group.
+            container_node (NodegraphAPI.Node): AYON container Group returned by
+                a loader.
         """
         combine_node = self.ensure_combine_node(placeholder_node)
         compat.set_parent(container_node, placeholder_node)
@@ -206,7 +207,7 @@ class KatanaPlaceholderPlugin(PlaceholderPlugin):
         """Return AYON containers nested beneath a placeholder Group.
 
         Args:
-            placeholder_node: Placeholder Group.
+            placeholder_node (NodegraphAPI.Node): Placeholder Group.
 
         Returns:
             Parsed AYON container dictionaries.
@@ -224,7 +225,7 @@ class KatanaPlaceholderPlugin(PlaceholderPlugin):
         """Return representation IDs already loaded by a placeholder.
 
         Args:
-            placeholder_node: Placeholder Group.
+            placeholder_node (NodegraphAPI.Node): Placeholder Group.
 
         Returns:
             Set of AYON representation IDs.
@@ -242,7 +243,7 @@ class KatanaPlaceholderPlugin(PlaceholderPlugin):
         connections are preserved. Empty placeholders are deleted normally.
 
         Args:
-            placeholder: AYON placeholder item.
+            placeholder (PlaceholderItem): AYON placeholder item.
         """
         placeholder_node = _node_from_identifier(placeholder.scene_identifier)
         if placeholder_node is None:

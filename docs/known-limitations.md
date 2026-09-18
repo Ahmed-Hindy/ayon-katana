@@ -8,7 +8,7 @@ features that map to supported Katana workflows.
 - Windows is the primary production platform.
 - Rocky Linux 9 with Katana 9.0v1 is supported for validated headless AYON
   workflows; interactive Viewer/UI and renderer execution remain unverified.
-- Katana 8.0v1 and 9.0v1 are the tested host versions.
+- Katana 8.0v1 and 9.0v1 are the tested versions.
 - macOS is not supported.
 
 ## Workfiles
@@ -19,14 +19,14 @@ features that map to supported Katana workflows.
 
 ## Loading
 
-- USD, Alembic, image, node graph, and supported semantic USD workflows are
-  covered.
-- FBX, HDA, BGEO, VDB, Arnold ASS, renderer proxy formats, KLF Look Files, and
+- Following types are supported:
+  - `USD`, `Alembic`, `image`, `node graph`.
+- FBX, VDB, Arnold ASS, renderer proxy formats, KLF Look Files, and
   LiveGroup source assets are not currently supported.
-- The native `UsdSubLayerAdd` node can show stale animated-camera locators in
-  Katana 9.0v1; `UsdIn` is the supported animated-camera playback route.
+- for Katana 9.0v1, `UsdSubLayerAdd` node is buggy when it comes to showing animations in the viewport. 
+  Try using `UsdIn`.
 - AYON entity URIs require the optional AYON USD Resolver, which is disabled by
-  default and is outside the current tested support matrix.
+  default and hasn't been properly tested.
 
 ## Publishing
 
@@ -40,29 +40,17 @@ features that map to supported Katana workflows.
 - Semantic USD Camera publishing verifies that the exported stage contains at
   least one composed `Camera` prim. Layout and assembly publishing does not
   currently enforce a universal semantic stage-content check.
-- USD farm export is not implemented; local native USD export is the supported
-  path.
-- Scene Review can capture one unambiguous visible Katana Viewer to a PNG image
+- USD farm export is not implemented; only local native USD export.
+- Scene Review will capture the Katana Viewer to a PNG image
   sequence for AYON review processing. Linux interactive Viewer capture remains
-  unverified. ImageWrite review output and still workfile thumbnails remain
-  supported as separate paths.
+  untested.
 
 ## Renderer and farm scope
 
-- RenderMan local rendering is live-tested on Windows with Katana 9.0v1,
-  including a real frame through the production local-render extractor.
-- The validated Rocky Linux Katana image intentionally contains no external
-  renderer plugin, so Linux renderer execution remains a coverage gap.
-- 3Delight support remains provisional and should be verified against a valid
-  studio renderer/license setup before production use.
-- Arnold/KtoA is not part of the supported deployment matrix.
+- Only Renderman and 3Delight have been tested. I don't think Arnold needs its own testing mechanism.
+- RenderMan and 3Delight were tested on Windows only with Katana 9.0v1.
+- Rocky Linux testing didn't involve any external renderer plugin, so Linux renderer execution remains a coverage gap.
 - Deadline support supplies Katana submission metadata and depends on the
   studio's AYON Deadline addon, Deadline repository, renderer, and host
   configuration. Automated acceptance validates the metadata path but does not
   submit a real farm job.
-
-## Deliberately out of scope
-
-SOP/BGEO/APEX authoring, HUSD output processors, value clips, legacy shelf
-tooling, and host-specific conversion utilities are not implemented because
-Katana does not expose those workflows.

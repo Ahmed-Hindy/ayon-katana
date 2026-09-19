@@ -468,6 +468,27 @@ def test_creator_rejects_an_empty_renderer_configuration(monkeypatch) -> None:
         creator.create("renderMain", {"families": []}, {"use_selection": False})
 
 
+def test_creator_preserves_renderer_validation_order(monkeypatch) -> None:
+    """Refactoring must preserve renderer validation before target/handle checks."""
+    module = _load_create_render_module(monkeypatch, default_renderer="")
+    creator = _new_creator(module)
+
+    def fail_handle_lookup():
+        raise RuntimeError("handle lookup should not run")
+
+    creator.create_context.get_current_task_entity = fail_handle_lookup
+    with pytest.raises(FakeCreatorError, match="renderer is not configured"):
+        creator.create(
+            "renderMain",
+            {"families": []},
+            {
+                "render_target": "hybrid",
+                "use_handles": True,
+                "use_selection": False,
+            },
+        )
+
+
 @pytest.mark.parametrize("render_target", ["local", "local_no_render"])
 def test_collector_preserves_non_farm_target_and_removes_farm_family(
     monkeypatch,

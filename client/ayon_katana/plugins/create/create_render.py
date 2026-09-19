@@ -14,6 +14,60 @@ from ayon_katana.api import compat, instances, plugin, render
 _TASK_HANDLES_PUBLISH_PLUGIN = "CollectAssetHandles"
 
 
+class _RenderCreateSpec:
+    """Resolved render-creation inputs independent from Katana graph mutation."""
+
+    __slots__ = (
+        "render_target",
+        "review",
+        "use_handles",
+        "use_selection",
+        "output_name",
+        "output_path",
+        "extension",
+        "channel",
+        "renderer",
+        "camera",
+        "frame_start",
+        "frame_end",
+        "frame_step",
+        "resolution",
+    )
+
+    def __init__(
+        self,
+        *,
+        render_target: str,
+        review: bool,
+        use_handles: bool,
+        use_selection: bool,
+        output_name: str,
+        output_path: str,
+        extension: str,
+        channel: str,
+        renderer: str,
+        camera: str,
+        frame_start: int,
+        frame_end: int,
+        frame_step: int,
+        resolution: str,
+    ) -> None:
+        self.render_target = render_target
+        self.review = review
+        self.use_handles = use_handles
+        self.use_selection = use_selection
+        self.output_name = output_name
+        self.output_path = output_path
+        self.extension = extension
+        self.channel = channel
+        self.renderer = renderer
+        self.camera = camera
+        self.frame_start = frame_start
+        self.frame_end = frame_end
+        self.frame_step = frame_step
+        self.resolution = resolution
+
+
 class CreateRender(plugin.KatanaCreator):
     """Create a Katana render graph and AYON publish instance."""
 
@@ -110,6 +164,81 @@ class CreateRender(plugin.KatanaCreator):
             )
         return renderer_name
 
+    def _build_create_spec(
+        self,
+        product_name: str,
+        pre_create_data: dict[str, Any],
+    ) -> _RenderCreateSpec:
+        """Resolve creator inputs into a validated render specification."""
+        frame_start_default, frame_end_default = self._current_frame_range()
+        frame_start = int(pre_create_data.get("frame_start", frame_start_default))
+        frame_end = int(pre_create_data.get("frame_end", frame_end_default))
+        frame_step = int(pre_create_data.get("frame_step", 1))
+        extension = pre_create_data.get("extension") or self.default_extension
+        output_path = pre_create_data.get("output_path") or self._default_output_path(
+            product_name,
+            extension,
+        )
+        renderer_name = self._get_required_renderer(pre_create_data.get("renderer"))
+        render_target = pre_create_data.get(
+            "render_target",
+            self.default_render_target,
+        )
+        if render_target not in {"farm", "local", "local_no_render"}:
+            raise CreatorError(f"Unsupported Katana render target: {render_target!r}.")
+
+        use_handles = bool(pre_create_data.get("use_handles", True))
+        handle_start, handle_end = (
+            self._current_task_handles() if use_handles else (0, 0)
+        )
+        return _RenderCreateSpec(
+            render_target=render_target,
+            review=bool(pre_create_data.get("review", True)),
+            use_handles=use_handles,
+            use_selection=bool(pre_create_data.get("use_selection", True)),
+            output_name=pre_create_data.get("output_name") or "primary",
+            output_path=output_path,
+            extension=extension,
+            channel=pre_create_data.get("channel") or self.default_channel,
+            renderer=renderer_name,
+            camera=pre_create_data.get("camera") or self.default_camera,
+            frame_start=frame_start - handle_start,
+            frame_end=frame_end + handle_end,
+            frame_step=frame_step,
+            resolution=pre_create_data.get("resolution") or "",
+        )
+
+    @staticmethod
+    def _prepare_instance_data(
+        instance_data: dict[str, Any],
+        spec: _RenderCreateSpec,
+    ) -> None:
+        """Persist AYON render metadata derived from a render specification."""
+        creator_attributes = instance_data.setdefault("creator_attributes", {})
+        creator_attributes.update(
+            {
+                "render_target": spec.render_target,
+                "review": spec.review,
+            }
+        )
+        handle_publish_attributes = instance_data.setdefault(
+            "publish_attributes", {}
+        ).setdefault(_TASK_HANDLES_PUBLISH_PLUGIN, {})
+        handle_publish_attributes["use_handles"] = spec.use_handles
+
+        families = instance_data.setdefault("families", [])
+        for family in ("render", "katana.render"):
+            if family not in families:
+                families.append(family)
+        if spec.render_target == "farm":
+            if "render.farm" not in families:
+                families.append("render.farm")
+        elif "render.farm" in families:
+            families.remove("render.farm")
+
+        instance_data["node_type"] = "Group"
+        instance_data["farm"] = spec.render_target == "farm"
+
     def create(
         self,
         product_name: str,
@@ -117,49 +246,8 @@ class CreateRender(plugin.KatanaCreator):
         pre_create_data: dict[str, Any],
     ):
         """Create a render graph and publish instance."""
-        frame_start_default, frame_end_default = self._current_frame_range()
-        frame_start = int(pre_create_data.get("frame_start", frame_start_default))
-        frame_end = int(pre_create_data.get("frame_end", frame_end_default))
-        frame_step = int(pre_create_data.get("frame_step", 1))
-        extension = pre_create_data.get("extension") or self.default_extension
-        output_path = pre_create_data.get("output_path") or self._default_output_path(
-            product_name, extension
-        )
-        renderer_name = self._get_required_renderer(pre_create_data.get("renderer"))
-        creator_attributes = instance_data.setdefault("creator_attributes", {})
-        use_handles = bool(pre_create_data.get("use_handles", True))
-        render_target = pre_create_data.get(
-            "render_target",
-            self.default_render_target,
-        )
-        if render_target not in {"farm", "local", "local_no_render"}:
-            raise CreatorError(f"Unsupported Katana render target: {render_target!r}.")
-        creator_attributes.update(
-            {
-                "render_target": render_target,
-                "review": bool(pre_create_data.get("review", True)),
-            }
-        )
-        handle_publish_attributes = instance_data.setdefault(
-            "publish_attributes", {}
-        ).setdefault(_TASK_HANDLES_PUBLISH_PLUGIN, {})
-        handle_publish_attributes["use_handles"] = use_handles
-        families = instance_data.setdefault("families", [])
-        for family in ("render", "katana.render"):
-            if family not in families:
-                families.append(family)
-        if render_target == "farm" and "render.farm" not in families:
-            families.append("render.farm")
-        if render_target != "farm" and "render.farm" in families:
-            families.remove("render.farm")
-        instance_data["node_type"] = "Group"
-        instance_data["farm"] = render_target == "farm"
-
-        handle_start, handle_end = (
-            self._current_task_handles() if use_handles else (0, 0)
-        )
-        render_start = frame_start - handle_start
-        render_end = frame_end + handle_end
+        spec = self._build_create_spec(product_name, pre_create_data)
+        self._prepare_instance_data(instance_data, spec)
         created_instance = None
         instance_node = None
         try:
@@ -172,16 +260,16 @@ class CreateRender(plugin.KatanaCreator):
             render_node = render.create_render_graph(
                 instance_node=instance_node,
                 product_name=product_name,
-                output_name=pre_create_data.get("output_name") or "primary",
-                output_path=output_path,
-                extension=extension,
-                channel=pre_create_data.get("channel") or self.default_channel,
-                renderer=renderer_name,
-                camera=pre_create_data.get("camera") or self.default_camera,
-                frame_start=render_start,
-                frame_end=render_end,
-                frame_step=frame_step,
-                resolution=pre_create_data.get("resolution") or "",
+                output_name=spec.output_name,
+                output_path=spec.output_path,
+                extension=spec.extension,
+                channel=spec.channel,
+                renderer=spec.renderer,
+                camera=spec.camera,
+                frame_start=spec.frame_start,
+                frame_end=spec.frame_end,
+                frame_step=spec.frame_step,
+                resolution=spec.resolution,
             )
             created_instance["instance_node"] = instance_node.getName()
             created_instance["render_node"] = render_node.getName()
@@ -191,7 +279,7 @@ class CreateRender(plugin.KatanaCreator):
             created_instance["render_settings_node"] = settings_node.getName()
             instances.imprint(instance_node, created_instance.data_to_store())
 
-            if pre_create_data.get("use_selection", True):
+            if spec.use_selection:
                 selected_nodes = compat.get_selected_nodes()
                 if selected_nodes:
                     source_port = selected_nodes[0].getOutputPort("out")

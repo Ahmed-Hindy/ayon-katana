@@ -1,7 +1,5 @@
 """Load USD representations into a managed Katana node graph."""
 
-from contextlib import suppress
-
 from ayon_core.lib import TextDef
 from Katana import NodegraphAPI
 
@@ -47,14 +45,13 @@ class UsdLoader(plugin.KatanaLoader):
         options = options or {}
         product_name = name or context["product"]["name"]
         namespace = namespace or context["folder"]["name"]
-        container_node = None
-        try:
-            container_node = containers.containerise(
-                name=product_name,
-                namespace=namespace,
-                context=context,
-                loader=self.__class__.__name__,
-            )
+        container_node = containers.containerise(
+            name=product_name,
+            namespace=namespace,
+            context=context,
+            loader=self.__class__.__name__,
+        )
+        with containers._rollback_on_error(container_node.delete):
             managed_group = containers.get_managed_group(container_node)
             if managed_group is None:
                 raise RuntimeError("Failed to create the AYON managed group.")
@@ -72,12 +69,7 @@ class UsdLoader(plugin.KatanaLoader):
             containers.set_managed_node_role(source_node, containers.SOURCE_ROLE)
             source_node.getOutputPort("out").connect(managed_group.getReturnPort("out"))
             self[:] = [container_node, source_node]
-            return container_node
-        except Exception:
-            if container_node is not None:
-                with suppress(Exception):
-                    container_node.delete()
-            raise
+        return container_node
 
     def _apply_options(self, source_node, options) -> None:
         """Apply loader-specific settings to a newly created source node."""
@@ -106,7 +98,10 @@ class UsdLoader(plugin.KatanaLoader):
         old_container_data.pop("node", None)
         old_container_data.pop("objectName", None)
         project = context.get("project") or {}
-        try:
+        with containers._rollback_on_error(
+            lambda: file_parameter.setValue(old_filepath, 0.0),
+            lambda: containers.update_container(container_node, old_container_data),
+        ):
             file_parameter.setValue(filepath, 0.0)
             containers.update_container(
                 container_node,
@@ -116,12 +111,6 @@ class UsdLoader(plugin.KatanaLoader):
                     "loader": self.__class__.__name__,
                 },
             )
-        except Exception:
-            with suppress(Exception):
-                file_parameter.setValue(old_filepath, 0.0)
-            with suppress(Exception):
-                containers.update_container(container_node, old_container_data)
-            raise
 
     def remove(self, container):
         """Remove a USD container from the Katana project."""

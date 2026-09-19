@@ -372,6 +372,35 @@ def _context(filepath: Path, representation_id: str) -> dict:
     }
 
 
+def test_rollback_helper_preserves_original_error_when_rollback_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Rollback failures must not replace the operation error or stop cleanup."""
+    environment = _load_loader_modules(
+        monkeypatch,
+        import_graph=lambda *_args: [],
+    )
+    rollback_calls = []
+
+    def failing_rollback() -> None:
+        rollback_calls.append("failing")
+        raise RuntimeError("rollback failure")
+
+    def final_rollback() -> None:
+        rollback_calls.append("final")
+
+    with (
+        pytest.raises(RuntimeError, match="operation failure"),
+        environment.containers._rollback_on_error(
+            failing_rollback,
+            final_rollback,
+        ),
+    ):
+        raise RuntimeError("operation failure")
+
+    assert rollback_calls == ["failing", "final"]
+
+
 @pytest.mark.parametrize(
     ("loader_attribute", "loader_name", "native_parameter", "native_default"),
     [
